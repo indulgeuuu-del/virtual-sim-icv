@@ -1,0 +1,2 @@
+# Preserve inherited mixed UTF-8/GB18030 source bytes and original line endings.
+* -text

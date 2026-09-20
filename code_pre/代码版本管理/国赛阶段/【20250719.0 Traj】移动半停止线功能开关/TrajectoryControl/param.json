@@ -1,0 +1,56 @@
+{
+  "_comment1": "障碍物分组距离", "groupingDistThres": 3.0,
+  "_comment2": "距离停止线多远停车", "stopLineDistThres": 0.2,
+  "_comment3": "距离停止线多远变道", "laneChangeDistThres": 30.0,
+  "_comment4": "距离中心线多远完成变道", "completeLaneChangeTThres": 1.5,
+  "_commenty": "判断是否到达某个循迹点的距离阈值", "achieveThres": 5.0,
+  "_comment5": "超车距离", "chasingLimitDist": 10.0,
+
+  "_comment6": "转向 P", "steerKp": 1.8,
+  "_comment7": "转向 D", "steerKd": 0.2,
+  "_comment8": "跟车 P", "followingKp": -0.2,
+  "_comment9": "转向抑制 P", "steeringOffsetKp": 0.5,
+
+  "_commenta": "每个案例主车的目标速度", "casetargetSpeed": {
+    "0": 10,
+    "9": 5,
+    "13": 5,
+    "17": 4,
+    "29": 5,
+    "default": 10
+  },
+
+  "_commentb": "每个案例主车的最小限制速度", "caseMinSpeed": {
+    "0": 0,
+    "default": 0
+  },
+
+  "_commentc": "每个案例主车的最大限制速度", "caseMaxSpeed": {
+    "0": 15,
+    "default": 15
+  },
+
+  "_commentd": "手动创建停止线的场景，格式为 [ srcx, srcy, dstx, dsty, type, srcFrame, dstFrame ]", "creatStopLine": {
+    "0": [ [ -19.626, 0.11, -19.626, 7.11, 0, 0, 10000 ] ]
+  },
+
+  "_commentj": "手动打灯的场景，1 表示左，2表示右", "manualLight": {
+    "0": 1
+  },
+
+  "_commentf": "稳定跟车的场景", "caseFollowing": [ 2, 14, 15, 22, 23, 24, 25, 40 ],
+
+  "_commentg": "停走场景", "caseStop": 25,
+
+  "_commentz": "配置溜车场景", "slideConfig": "41:250->330, 41:500->730",
+
+  "_commentl": "功能开关说明：[switch, case1, case2, case3, ...]，首位是开关状态，0 表示关，1 表示开",
+  "_commenth": "邻域超车功能开关", "overtakeSwitcher": [1, 28],
+  "_commentk": "单车道变道功能开关", "singleLaneChangeSwitcher": [1, 11, 29],
+  "_commentx": "移动半停止线变道功能开关", "mobileSingleStoplineSwitcher": [1, 17, 39],
+
+  "_commenti": "———————————————————————— 以下都是不需要更改的变量 ————————————————————————",
+  "_comment10": "转向 I 没用", "steerKi": 0,
+  "_comment11": "跟车 I 没用", "followingKi": 0,
+  "_comment12": "跟车 D 没用", "followingKd": 0
+}

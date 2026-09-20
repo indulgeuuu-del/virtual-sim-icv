@@ -1,0 +1,35 @@
+double minDistance = std::numeric_limits<double>::max(); // 主车与障碍物的最小距离
+int potentialObstacleIndex = pObstacle->obstacleSize; // 距离主车最近的障碍物索引
+SSD::SimString potentialObstacleLaneId = ""; // 距离主车最近的障碍物所处的道路 ID
+
+for (size_t i = 0; i < pObstacle->obstacleSize; ++i) {
+	SSD::SimPoint3D obstaclePos(pObstacle->obstacle[i].posX, pObstacle->obstacle[i].posY, pObstacle->obstacle[i].posZ);
+	SSD::SimString obstacleLaneId = SampleGetNearMostLane(obstaclePos);
+	if (mainVehicleLaneId == obstacleLaneId) {
+		double obstacleDistance = UtilMath::planarDistance(mainVehiclePos, obstaclePos);
+
+		if (obstacleDistance < minDistance) {
+			minDistance = obstacleDistance;
+			potentialObstacleIndex = (int)i;
+			potentialObstacleLaneId = obstacleLaneId;
+		}
+	}
+}
+
+auto& potentialObstacle = pObstacle->obstacle[potentialObstacleIndex]; // 最近的障碍物对象
+double potentialObstacleSpeed = UtilMath::calculateSpeed(potentialObstacle.velX, potentialObstacle.velY, potentialObstacle.velZ);
+SSD::SimPoint3D potentialObstaclePos = SSD::SimPoint3D(potentialObstacle.posX, potentialObstacle.posY, potentialObstacle.posZ);
+
+// 转入 Frenet 坐标系下处理，判断潜在障碍物是否在主车的后方
+// s：沿车道中心线的距离（车道纵向坐标，类似于弧长）
+// t：垂直于车道中心线的距离（车道横向坐标，表示偏移量）
+double sObstalce = 0.0;
+double tObstacle = 0.0;
+
+if (!potentialObstacleLaneId.Empty()) { // 检查潜在障碍物的车道 ID 是否为空
+	// 计算障碍物和主车在车道上的 ST 坐标
+	SampleGetLaneST(potentialObstacleLaneId, potentialObstaclePos, sObstalce, tObstacle);
+	SampleGetLaneST(mainVehicleLaneId, mainVehiclePos, sMainVehicle, tMainVehicle);
+	// 如果主车的 sMainVehicle 小于障碍物的 sObstacle，说明障碍物在主车后方
+	FlagType::isObstalceBehind = !(sMainVehicle >= sObstalce);
+}

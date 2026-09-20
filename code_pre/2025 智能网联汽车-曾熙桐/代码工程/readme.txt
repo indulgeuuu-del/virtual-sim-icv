@@ -1,0 +1,4 @@
+泊车部分单独使用一辆AVP主车，AVP工程中的代码就是AVP主车的代码。
+LKA、AEB、AutoDrive、事故场景、连续场景等其余场景都是用同一辆AutoDrive主车来跑，使用的是TrajectoryControl工程中的代码。
+感知题使用Python代码完成。
+技术报告的编写也分为AVP、TrajectoryControl和感知题三个文档。
