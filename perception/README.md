@@ -1,6 +1,6 @@
 # 视频感知开发副本
 
-本目录是历史辅助项目。当前2027公开规则未发现独立视频计数提交要求，团队主线见 [开发路线](../docs/team/开发路线.md)。
+本目录恢复历史感知题。当前先复现感知，再研究CARLA；这是团队的开发安排，当前2027公开规则仍未发现独立视频计数提交要求，见 [开发路线](../docs/team/开发路线.md)。
 
 来源为 `code_pre/2025 智能网联汽车-曾熙桐/代码工程/感知题代码/` 的三份 Python 文件。`provenance.json` 记录原始文件 SHA-256；原版保留不改。
 
@@ -32,6 +32,6 @@ python -m perception.main --model "路径/best.pt" --video "路径/sample.mp4" -
 
 `--headless` 无窗口运行，`--save-video` 保存标注视频；`--max-frames 30` 可只处理前30帧试跑。省略 `--headless` 会打开原有 GUI，Esc 提前结束且只统计已处理片段。每次实验必须使用空目录或新目录。入口不包含历史 Gitee 上传逻辑。
 
-输出包括 `traffic_statistics.xlsx`、`track_details.xlsx`、`run_metadata.json` 及可选的 `annotated.mp4`。轨迹表沿用原逻辑，只包含结束时尚保留且已有方向的轨迹，不是完整历史明细。九类英文标签仍沿用原版，ID6/8 分别对应权重中的工程用车/货车；加载时检查模型的类别顺序。
+输出包括 `traffic_statistics.xlsx`、`track_details.xlsx`、`tracking_diagnostics.json`、`run_metadata.json` 及可选的 `annotated.mp4`。轨迹表包含全部创建过的轨迹，包括丢失和未计数的轨迹；诊断文件记录计数条件检查次数。轨迹数量不等于真实车辆数量。九类英文标签沿用原版，ID6/8 分别对应工程用车/货车；加载时检查模型类别顺序。
 
 目前仍是贪心关联，不保证遮挡、交叉或高密度车流不会换 ID；局部最近匹配也不等于整帧全局最优匹配。计数边界沿用历史规则，真实准确率未验证。程序默认将Ultralytics配置放在项目的 `work/inference/ultralytics`，并启用其离线模式；显式环境变量可覆盖默认值，离线模式不构成网络隔离保证。

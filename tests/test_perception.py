@@ -15,6 +15,7 @@ from perception import main as pipeline
 class PerceptionRegressionTests(unittest.TestCase):
     def setUp(self):
         pipeline.vehicle_tracks.clear()
+        pipeline.retired_tracks.clear()
         pipeline.next_vehicle_id = 0
 
     def test_disjoint_boxes_survive_nms(self):

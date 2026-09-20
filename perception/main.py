@@ -7,6 +7,7 @@ import json
 import os
 import platform
 import time
+from collections import Counter
 from importlib.metadata import version
 from pathlib import Path
 import numpy as np
@@ -33,6 +34,7 @@ traffic_participant_counts = {cn: 0 for cn in CN_NAMES}  # 每类目标的计数
 traffic_direction_counts = {cn: {'Straight': 0, 'Left': 0, 'Right': 0} for cn in CN_NAMES}  # 每类目标的方向计数
 
 vehicle_tracks = {}
+retired_tracks = {}
 next_vehicle_id = 0
 
 show_marks = True
@@ -137,11 +139,47 @@ def update_tracks_with_iou(detections):
                 to_delete.append(vid)
 
     for vid in to_delete:
+        retired_tracks[vid] = track_record(vehicle_tracks[vid], 'lost')
         del vehicle_tracks[vid]
+
+
+def counting_status(vehicle, frame_shape):
+    """Explain the legacy gates without relaxing the counting rule."""
+    if vehicle.counted:
+        return 'counted'
+    if vehicle.finished:
+        return 'finished_without_count'
+    if len(vehicle.pts) < min_track_len:
+        return 'short_track'
+    if np.linalg.norm(np.array(vehicle.pts[-1], dtype=float) - vehicle.pts[1]) < 80:
+        return 'displacement_below_80'
+    cx, cy = vehicle.get_smoothed_pts()[-1]
+    margin = 40 if vehicle.cls == 3 else 160 if vehicle.cls in (7, 8) else 100
+    h, w = frame_shape[:2]
+    boundaries = [(cx < margin, (0, 1)), (cx > w - margin, (0, -1)),
+                  (cy < margin, (-1, 0)), (cy > h - margin, (1, 0))]
+    if not any(inside for inside, _ in boundaries):
+        return 'outside_exit_zone'
+    if not any(inside and vehicle.angleWithLine(normal) for inside, normal in boundaries):
+        return 'exit_motion_rejected'
+    return 'eligible'
+
+
+def track_record(vehicle, end_reason):
+    return {'id': vehicle.id, 'class_id': vehicle.cls, 'type': CN_NAMES[vehicle.cls],
+            'direction': vehicle.direction, 'point_count': len(vehicle.pts),
+            'counted': vehicle.counted, 'end_reason': end_reason,
+            'first_point': vehicle.pts[0], 'last_point': vehicle.pts[-1],
+            'displacement': float(np.linalg.norm(np.array(vehicle.pts[-1]) - vehicle.pts[0])),
+            'status_frames': dict(getattr(vehicle, 'status_frames', {}))}
 
 
 def process_vehicle_tracks(frame, show_window=True):
     for vid, vehicle in vehicle_tracks.items():
+        status = counting_status(vehicle, frame.shape)
+        if not hasattr(vehicle, 'status_frames'):
+            vehicle.status_frames = Counter()
+        vehicle.status_frames[status] += 1
         pts_before = vehicle.pts
         pts = vehicle.get_smoothed_pts()
 
@@ -315,6 +353,7 @@ def main(argv=None):
 
     # 清空数据
     vehicle_tracks.clear()
+    retired_tracks.clear()
     next_vehicle_id = 0
     show_marks = True
     for cn in CN_NAMES:
@@ -398,18 +437,26 @@ def main(argv=None):
     df.to_excel(args.output_dir / 'traffic_statistics.xlsx', index=False)
     print('Statistics saved to traffic_statistics.xlsx')
 
-    # 保存详细轨迹信息到Excel文件
+    # Retired tracks must remain auditable after the live association window expires.
+    all_tracks = dict(retired_tracks)
+    all_tracks.update({vid: track_record(vehicle, stop_reason)
+                       for vid, vehicle in vehicle_tracks.items()})
     track_infos = []
-    for vid, vehicle in vehicle_tracks.items():
-        if vehicle.direction:
-            track_infos.append({
-                'ID': vid,
-                'Type': CN_NAMES[vehicle.cls],
-                'Direction': vehicle.direction,
-                'Track Length': len(vehicle.pts)
-            })
-    pd.DataFrame(track_infos, columns=['ID', 'Type', 'Direction', 'Track Length']).to_excel(
+    for vid, track in sorted(all_tracks.items()):
+        track_infos.append({'ID': vid, 'Type': track['type'],
+                            'Direction': track['direction'], 'Track Length': track['point_count'],
+                            'Counted': track['counted'], 'End Reason': track['end_reason']})
+    pd.DataFrame(track_infos, columns=['ID', 'Type', 'Direction', 'Track Length',
+                                     'Counted', 'End Reason']).to_excel(
         args.output_dir / 'track_details.xlsx', index=False)
+    diagnostic_counts = Counter()
+    for track in all_tracks.values():
+        diagnostic_counts.update(track['status_frames'])
+    (args.output_dir / 'tracking_diagnostics.json').write_text(json.dumps(
+        {'scope': 'all tracks; status_frames counts track-frame observations, not vehicles',
+         'status_frames': dict(diagnostic_counts),
+         'tracks': [all_tracks[vid] for vid in sorted(all_tracks)]},
+        ensure_ascii=False, indent=2), encoding='utf-8')
     print('Track details saved to track_details.xlsx')
     metadata = {
         'model_sha256': model_hash, 'video_sha256': video_hash,
@@ -430,7 +477,7 @@ def main(argv=None):
                        'nms_class_aware': True, 'distance_fallback': 'nearest_unassigned_same_class',
                        'min_track_len': min_track_len, 'iou_thresh': iou_thresh,
                        'position_similarity_thresh': position_similarity_thresh},
-        'track_details_scope': 'active tracks at end, not complete history',
+        'track_details_scope': 'all created tracks, including retired and uncounted',
     }
     (args.output_dir / 'run_metadata.json').write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2), encoding='utf-8')
