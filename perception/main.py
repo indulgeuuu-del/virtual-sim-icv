@@ -4,6 +4,7 @@ import cv2  # 用于图像处理和视频操作
 import argparse
 import hashlib
 import json
+import os
 import platform
 import time
 from importlib.metadata import version
@@ -63,14 +64,22 @@ def bbox_iou(boxA, boxB):
     return iou
 
 # 使用 IOU 更新跟踪轨迹，使用 Vehicle 类管理车辆信息
-def suppress_boxes(xyxy, confidences):
-    """Convert corner coordinates to OpenCV (x, y, width, height) boxes."""
+def suppress_boxes(xyxy, confidences, class_ids=None):
+    """Suppress duplicate boxes within each class, preserving confidence order."""
     if len(xyxy) == 0:
         return np.empty(0, dtype=int)
+    if len(xyxy) != len(confidences) or (class_ids is not None and len(xyxy) != len(class_ids)):
+        raise ValueError('Boxes, confidences and classes must have equal lengths')
     boxes = [[float(x1), float(y1), float(x2 - x1), float(y2 - y1)]
              for x1, y1, x2, y2 in xyxy]
-    indices = cv2.dnn.NMSBoxes(boxes, list(map(float, confidences)), 0.4, 0.8)
-    return np.asarray(indices, dtype=int).reshape(-1)
+    classes = np.zeros(len(boxes), dtype=int) if class_ids is None else np.asarray(class_ids)
+    kept = []
+    for cls in np.unique(classes):
+        members = np.flatnonzero(classes == cls)
+        indices = cv2.dnn.NMSBoxes([boxes[i] for i in members],
+                                   [float(confidences[i]) for i in members], 0.4, 0.8)
+        kept.extend(int(members[i]) for i in np.asarray(indices, dtype=int).reshape(-1))
+    return np.asarray(sorted(kept, key=lambda i: (-float(confidences[i]), i)), dtype=int)
 
 
 def update_tracks_with_iou(detections):
@@ -98,15 +107,17 @@ def update_tracks_with_iou(detections):
 
         # 如果 IOU 匹配失败，使用欧氏距离判断轨迹相似性
         if max_iou <= iou_thresh:
+            nearest_distance = position_similarity_thresh
+            new_pt = (int((x1 + x2) // 2), int((y1 + y2) // 2))
             for vid, vehicle in vehicle_tracks.items():
                 if vid in assigned or vehicle.cls != cls:
                     continue
                 last_pt = vehicle.pts[-1]
-                new_pt = (int((x1 + x2) // 2), int((y1 + y2) // 2))
-                if np.linalg.norm(np.array(last_pt) - np.array(new_pt)) < position_similarity_thresh:
+                distance = np.linalg.norm(np.array(last_pt) - np.array(new_pt))
+                if distance < nearest_distance:
+                    nearest_distance = distance
                     max_iou = 0.8  # 视为强匹配
                     matched_id = vid
-                    break
 
         if max_iou > iou_thresh and matched_id is not None:
             vehicle_tracks[matched_id].update((x1, y1, x2, y2))
@@ -273,10 +284,17 @@ def validate_model_names(names):
         raise ValueError(f'模型类别与九类交接基线不一致: {actual}')
 
 
+def configure_inference_environment():
+    # Keep third-party settings local even when the caller omits shell setup.
+    os.environ.setdefault('YOLO_CONFIG_DIR', str(Path(__file__).resolve().parents[1] / 'work/inference/ultralytics'))
+    os.environ.setdefault('YOLO_OFFLINE', 'true')
+
+
 def main(argv=None):
     global next_vehicle_id, show_marks
 
     args = parse_args(argv)
+    configure_inference_environment()
     # 仅在真实视频运行时加载推理和导出依赖，导入模块不会启动模型。
     import pandas as pd
     from ultralytics import YOLO
@@ -321,7 +339,7 @@ def main(argv=None):
             xyxy = dets.xyxy
             confidences = dets.conf
             class_ids = dets.cls.astype(int)
-            indices = suppress_boxes(xyxy, confidences)
+            indices = suppress_boxes(xyxy, confidences, class_ids)
             detections = []
             for i in indices:
                 x1, y1, x2, y2 = xyxy[i]
@@ -409,6 +427,7 @@ def main(argv=None):
         'tracks_created': next_vehicle_id, 'counted_total': sum(traffic_participant_counts.values()),
         'elapsed_seconds': round(time.perf_counter() - started, 3),
         'parameters': {'confidence': 0.4, 'nms_iou': 0.8, 'max_lost': max_lost,
+                       'nms_class_aware': True, 'distance_fallback': 'nearest_unassigned_same_class',
                        'min_track_len': min_track_len, 'iou_thresh': iou_thresh,
                        'position_similarity_thresh': position_similarity_thresh},
         'track_details_scope': 'active tracks at end, not complete history',

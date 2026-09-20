@@ -1,5 +1,6 @@
 import contextlib
 import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,17 @@ class PerceptionRegressionTests(unittest.TestCase):
         self.assertEqual(pipeline.suppress_boxes([], []).tolist(), [])
         pipeline.update_tracks_with_iou([])
         self.assertEqual(pipeline.vehicle_tracks, {})
+
+    def test_overlapping_different_classes_survive_nms(self):
+        boxes = [[10, 10, 30, 30], [10, 10, 30, 30], [10, 10, 30, 30]]
+        self.assertEqual(pipeline.suppress_boxes(boxes, [.9, .8, .7], [5, 3, 5]).tolist(), [0, 1])
+
+    def test_distance_fallback_chooses_nearest_track(self):
+        pipeline.update_tracks_with_iou([(90, 90, 110, 110, 5), (130, 90, 150, 110, 5)])
+        pipeline.update_tracks_with_iou([(125, 90, 145, 110, 5)])
+        self.assertEqual(pipeline.vehicle_tracks[0].lost, 1)
+        self.assertEqual(pipeline.vehicle_tracks[1].lost, 0)
+        self.assertEqual(pipeline.vehicle_tracks[1].last_bbox, (125, 90, 145, 110))
 
     def test_iou_cannot_assign_one_track_twice(self):
         pipeline.update_tracks_with_iou([(100, 100, 120, 120, 5)])
@@ -132,6 +144,21 @@ class PerceptionRegressionTests(unittest.TestCase):
                                    '--output-dir', str(root / 'out'), '--headless'])
             capture.release.assert_called_once()
             self.assertFalse((root / 'out').exists())
+
+    def test_inference_settings_default_to_project_directory(self):
+        with patch.dict(os.environ):
+            os.environ.pop('YOLO_CONFIG_DIR', None)
+            os.environ.pop('YOLO_OFFLINE', None)
+            pipeline.configure_inference_environment()
+            self.assertEqual(Path(os.environ['YOLO_CONFIG_DIR']),
+                             Path(pipeline.__file__).resolve().parents[1] / 'work/inference/ultralytics')
+            self.assertEqual(os.environ['YOLO_OFFLINE'], 'true')
+
+    def test_explicit_inference_settings_are_preserved(self):
+        with patch.dict(os.environ, {'YOLO_CONFIG_DIR': 'custom-config', 'YOLO_OFFLINE': 'false'}):
+            pipeline.configure_inference_environment()
+            self.assertEqual(os.environ['YOLO_CONFIG_DIR'], 'custom-config')
+            self.assertEqual(os.environ['YOLO_OFFLINE'], 'false')
 
 
 if __name__ == '__main__':
