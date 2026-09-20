@@ -2,7 +2,10 @@ import contextlib
 import io
 import subprocess
 import sys
+import tempfile
+import types
 import unittest
+from unittest.mock import patch, Mock
 from pathlib import Path
 
 from perception import main as pipeline
@@ -78,6 +81,57 @@ class PerceptionRegressionTests(unittest.TestCase):
                                 cwd=Path(__file__).resolve().parents[1],
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_headless_processing_never_opens_window(self):
+        import numpy as np
+        with patch.object(pipeline.cv2, 'namedWindow', side_effect=AssertionError('GUI called')), \
+                patch.object(pipeline.cv2, 'imshow', side_effect=AssertionError('GUI called')):
+            pipeline.process_vehicle_tracks(np.zeros((240, 320, 3), dtype=np.uint8), show_window=False)
+
+    def test_model_class_order_must_match(self):
+        pipeline.validate_model_names(dict(enumerate(pipeline.MODEL_NAMES)))
+        wrong = list(pipeline.MODEL_NAMES)
+        wrong[6], wrong[8] = wrong[8], wrong[6]
+        with self.assertRaises(ValueError):
+            pipeline.validate_model_names(wrong)
+
+    def test_output_cannot_overwrite_previous_experiment(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            model, video = root / 'best.pt', root / 'input.mp4'
+            model.touch()
+            video.touch()
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                pipeline.parse_args(['--model', str(model), '--video', str(video),
+                                     '--output-dir', str(root)])
+
+    def test_frame_limit_must_be_positive(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            model, video = root / 'best.pt', root / 'input.mp4'
+            model.touch()
+            video.touch()
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                pipeline.parse_args(['--model', str(model), '--video', str(video),
+                                     '--output-dir', str(root / 'out'), '--max-frames', '0'])
+
+    def test_model_load_failure_releases_video(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            model, video = root / 'best.pt', root / 'input.mp4'
+            model.touch()
+            video.touch()
+            capture = Mock()
+            capture.get.return_value = 30
+            fake_yolo = Mock(side_effect=RuntimeError('model loading failed'))
+            with patch.dict(sys.modules, {'pandas': types.ModuleType('pandas'),
+                                          'ultralytics': types.SimpleNamespace(YOLO=fake_yolo)}), \
+                    patch.object(pipeline.cv2, 'VideoCapture', return_value=capture):
+                with self.assertRaisesRegex(RuntimeError, 'model loading failed'):
+                    pipeline.main(['--model', str(model), '--video', str(video),
+                                   '--output-dir', str(root / 'out'), '--headless'])
+            capture.release.assert_called_once()
+            self.assertFalse((root / 'out').exists())
 
 
 if __name__ == '__main__':

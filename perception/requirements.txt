@@ -1,7 +1,2 @@
-# Dependency inventory, not a validated/pinned inference environment.
-numpy
-opencv-python
-scipy
-pandas
-openpyxl
-ultralytics
+# Recovered Windows / Python 3.10 / CPU inference environment.
+-r requirements-inference.lock.txt

@@ -2,6 +2,11 @@
 
 import cv2  # 用于图像处理和视频操作
 import argparse
+import hashlib
+import json
+import platform
+import time
+from importlib.metadata import version
 from pathlib import Path
 import numpy as np
 if __package__:
@@ -11,6 +16,7 @@ else:
 
 # 定义类别名称
 CN_NAMES = ['Police', 'Ambulance', 'Tricycle', 'Pedestrian', 'Motorcycle', 'Car', 'Truck', 'Bus', 'Van']
+MODEL_NAMES = ['警车', '救护车', '三轮车', '行人', '两轮摩托车', '轿车', '工程用车', '大巴车', '货车']
 
 # 跟踪参数
 max_lost = 10                   # 最大丢失帧数
@@ -123,7 +129,7 @@ def update_tracks_with_iou(detections):
         del vehicle_tracks[vid]
 
 
-def process_vehicle_tracks(frame):
+def process_vehicle_tracks(frame, show_window=True):
     for vid, vehicle in vehicle_tracks.items():
         pts_before = vehicle.pts
         pts = vehicle.get_smoothed_pts()
@@ -214,7 +220,7 @@ def process_vehicle_tracks(frame):
     cv2.putText(frame, f"Total Left:     {total_counts['Left']}", (30, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
     cv2.putText(frame, f"Total Right:    {total_counts['Right']}", (30, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-    if show_marks:
+    if show_marks and show_window:
         # 创建纯黑色图像（高度800，宽度1200）
         stateFrame = np.zeros((400, 800, 3), dtype=np.uint8)
 
@@ -236,13 +242,35 @@ def parse_args(argv=None):
     parser.add_argument('--model', type=Path, required=True, help='本地模型权重')
     parser.add_argument('--video', type=Path, required=True, help='本地输入视频')
     parser.add_argument('--output-dir', type=Path, required=True, help='统计结果目录')
+    parser.add_argument('--headless', action='store_true', help='不打开窗口，处理完成后自动退出')
+    parser.add_argument('--device', default='cpu', help='推理设备，默认 cpu；加速设备需另行验证')
+    parser.add_argument('--max-frames', type=int, help='只处理前N帧用于试跑；省略则处理到视频结束')
+    parser.add_argument('--save-video', action='store_true', help='保存带检测框/轨迹的视频 annotated.mp4')
     args = parser.parse_args(argv)
     for name in ('model', 'video'):
         if not getattr(args, name).is_file():
             parser.error(f'{name} 文件不存在: {getattr(args, name)}')
     if args.output_dir.exists() and not args.output_dir.is_dir():
         parser.error('output-dir 必须是目录')
+    if args.max_frames is not None and args.max_frames <= 0:
+        parser.error('max-frames 必须为正整数')
+    if args.output_dir.is_dir() and any(args.output_dir.iterdir()):
+        parser.error('output-dir 必须为空目录或尚不存在，避免覆盖既有实验')
     return args
+
+
+def file_sha256(path):
+    digest = hashlib.sha256()
+    with open(path, 'rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def validate_model_names(names):
+    actual = [names.get(i) for i in range(len(names))] if isinstance(names, dict) else list(names)
+    if actual != MODEL_NAMES:
+        raise ValueError(f'模型类别与九类交接基线不一致: {actual}')
 
 
 def main(argv=None):
@@ -252,73 +280,93 @@ def main(argv=None):
     # 仅在真实视频运行时加载推理和导出依赖，导入模块不会启动模型。
     import pandas as pd
     from ultralytics import YOLO
+    started = time.perf_counter()
+    model_hash = file_sha256(args.model)
+    video_hash = file_sha256(args.video)
     cap = cv2.VideoCapture(str(args.video))
     if not cap.isOpened():
         cap.release()
         raise ValueError(f'无法打开视频: {args.video}')
-    try:
-        model = YOLO(str(args.model))
-    except Exception:
-        cap.release()
-        raise
+    writer = None
     frames_read = 0
+    detections_total = 0
+    frames_with_detections = 0
+    stop_reason = 'read_end'
+    source_fps = cap.get(cv2.CAP_PROP_FPS)
+    source_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     # 清空数据
     vehicle_tracks.clear()
     next_vehicle_id = 0
+    show_marks = True
     for cn in CN_NAMES:
         traffic_participant_counts[cn] = 0
         traffic_direction_counts[cn] = {'Straight': 0, 'Left': 0, 'Right': 0}
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frames_read += 1
+    try:
+        model = YOLO(str(args.model))
+        validate_model_names(model.names)
+        while cap.isOpened():
+            if args.max_frames is not None and frames_read >= args.max_frames:
+                stop_reason = 'frame_limit'
+                break
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frames_read += 1
 
-        # 目标检测
-        frameYolo = frame.copy()
-        results = model(frameYolo, conf=0.4, verbose=False)
-        dets = results[0].boxes.cpu().numpy()
-        xyxy = np.array([b.xyxy[0] for b in dets])  # shape: (N, 4)
-        confidences = np.array([b.conf[0] for b in dets])  # shape: (N,)
-        class_ids = np.array([int(b.cls[0]) for b in dets])  # shape: (N,)
-
-        # 非极大抑制处理
-        indices = suppress_boxes(xyxy, confidences)
-        detections = []
-        if len(indices) > 0:
-            for i in indices.flatten():
+            # 模型对这一帧找框；关联和计数仍使用交接算法。
+            results = model(frame.copy(), conf=0.4, verbose=False, device=args.device)
+            dets = results[0].boxes.cpu().numpy()
+            xyxy = dets.xyxy
+            confidences = dets.conf
+            class_ids = dets.cls.astype(int)
+            indices = suppress_boxes(xyxy, confidences)
+            detections = []
+            for i in indices:
                 x1, y1, x2, y2 = xyxy[i]
-                cls_id = class_ids[i]
+                cls_id = int(class_ids[i])
                 if 0 <= cls_id < len(CN_NAMES):
                     detections.append((x1, y1, x2, y2, cls_id))
                     if show_marks:
-                        # 可视化检测框
                         cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 255), 2)
-                        # 可选：标注类别
-                        # cv2.putText(frame, CN_NAMES[cls_id], (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+            detections_total += len(detections)
+            frames_with_detections += bool(detections)
+            update_tracks_with_iou(detections)
+            frame = process_vehicle_tracks(frame, show_window=not args.headless)
 
-        # 更新车辆轨迹
-        update_tracks_with_iou(detections)
-
-        # 处理车辆轨迹、绘制轨迹与方向
-        frame = process_vehicle_tracks(frame)
-
-        cv2.namedWindow("Traffic Statistics", cv2.WINDOW_NORMAL)
-        cv2.imshow('Traffic Statistics', frame)
-
-        global lastKey
-        lastKey = cv2.waitKey(1) & 0xFF
-        if lastKey == 27:  # ESC键退出
-            break
-        elif lastKey == 9:
-            show_marks = not show_marks
-
-    cap.release()
-    cv2.destroyAllWindows()
+            if args.save_video:
+                if writer is None:
+                    if not np.isfinite(source_fps) or source_fps <= 0:
+                        raise ValueError('视频帧率无效，无法按原帧率保存标注视频')
+                    args.output_dir.mkdir(parents=True, exist_ok=True)
+                    writer = cv2.VideoWriter(str(args.output_dir / 'annotated.mp4'),
+                                             cv2.VideoWriter_fourcc(*'mp4v'), source_fps,
+                                             (frame.shape[1], frame.shape[0]))
+                    if not writer.isOpened():
+                        raise ValueError('无法创建标注视频')
+                writer.write(frame)
+            if frames_read % 100 == 0:
+                print(f'Processed {frames_read}/{source_frames} frames', flush=True)
+            if not args.headless:
+                cv2.namedWindow('Traffic Statistics', cv2.WINDOW_NORMAL)
+                cv2.imshow('Traffic Statistics', frame)
+                last_key = cv2.waitKey(1) & 0xFF
+                if last_key == 27:
+                    stop_reason = 'escape'
+                    break
+                if last_key == 9:
+                    show_marks = not show_marks
+    finally:
+        cap.release()
+        if writer is not None:
+            writer.release()
+        if not args.headless:
+            cv2.destroyAllWindows()
     if frames_read == 0:
         raise ValueError('视频没有可读取帧，未生成计数表')
+    if stop_reason == 'read_end' and source_frames > 0 and frames_read < source_frames:
+        raise ValueError(f'视频提前停止解码: {frames_read}/{source_frames}，未生成计数表')
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     # 保存统计结果到Excel文件
@@ -342,8 +390,33 @@ def main(argv=None):
                 'Direction': vehicle.direction,
                 'Track Length': len(vehicle.pts)
             })
-    pd.DataFrame(track_infos).to_excel(args.output_dir / 'track_details.xlsx', index=False)
+    pd.DataFrame(track_infos, columns=['ID', 'Type', 'Direction', 'Track Length']).to_excel(
+        args.output_dir / 'track_details.xlsx', index=False)
     print('Track details saved to track_details.xlsx')
+    metadata = {
+        'model_sha256': model_hash, 'video_sha256': video_hash,
+        'source_sha256': {name: file_sha256(Path(__file__).with_name(name))
+                          for name in ('main.py', 'vehicle.py')},
+        'model_names': model.names, 'output_labels': CN_NAMES,
+        'python': platform.python_version(),
+        'packages': {name: version(name) for name in
+                     ('ultralytics', 'torch', 'torchvision', 'numpy', 'opencv-python',
+                      'scipy', 'pandas', 'openpyxl')},
+        'device': args.device, 'headless': args.headless, 'max_frames': args.max_frames,
+        'source_fps': source_fps, 'source_frames': source_frames,
+        'processed_frames': frames_read, 'stop_reason': stop_reason,
+        'detections_total': detections_total, 'frames_with_detections': frames_with_detections,
+        'tracks_created': next_vehicle_id, 'counted_total': sum(traffic_participant_counts.values()),
+        'elapsed_seconds': round(time.perf_counter() - started, 3),
+        'parameters': {'confidence': 0.4, 'nms_iou': 0.8, 'max_lost': max_lost,
+                       'min_track_len': min_track_len, 'iou_thresh': iou_thresh,
+                       'position_similarity_thresh': position_similarity_thresh},
+        'track_details_scope': 'active tracks at end, not complete history',
+    }
+    (args.output_dir / 'run_metadata.json').write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(f'Processed {frames_read} frames; counted {metadata["counted_total"]}; '
+          f'results: {args.output_dir}', flush=True)
 
 if __name__ == '__main__':
     main()
