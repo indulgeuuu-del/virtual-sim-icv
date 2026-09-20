@@ -9,7 +9,9 @@ GEMINI.md
 .workbuddy/
 /work/
 /tmp/
-/docs/
+# Public team documentation is the only published docs subtree.
+/docs/*
+!/docs/team/
 
 # Inherited personal documents and competition materials remain local
 *.pdf

@@ -1,0 +1,7 @@
+# Dependency inventory, not a validated/pinned inference environment.
+numpy
+opencv-python
+scipy
+pandas
+openpyxl
+ultralytics

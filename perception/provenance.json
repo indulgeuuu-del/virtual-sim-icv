@@ -1,0 +1,20 @@
+{
+  "baseline": "2025 handover perception, nine classes",
+  "files": [
+    {
+      "source": "code_pre/2025 智能网联汽车-曾熙桐/代码工程/感知题代码/main.py",
+      "destination": "perception/main.py",
+      "original_sha256": "b7a5862a18eb0da7bcde350ead99cd593ed1154f316c8c18b70d946cd64ec804"
+    },
+    {
+      "source": "code_pre/2025 智能网联汽车-曾熙桐/代码工程/感知题代码/vehicle.py",
+      "destination": "perception/vehicle.py",
+      "original_sha256": "41844753ae8460c76ab834b497c6bdbfff36d815e7df034126bba9dad559ac22"
+    },
+    {
+      "source": "code_pre/2025 智能网联汽车-曾熙桐/代码工程/感知题代码/boundary.py",
+      "destination": "perception/boundary.py",
+      "original_sha256": "eefaed3d4ce701184b35d8108f881e14e7844423a5561a7227e3b1b7d6faee0b"
+    }
+  ]
+}
