@@ -40,7 +40,7 @@ python -m perception.main --model "路径/best.pt" --video "路径/sample.mp4" -
 
 ### 最新复现验收：2026-09-20
 
-完整命令（仓库根目录，新输出目录）：
+以下是历史验收使用的命令和本地资料位置，不是首次安装步骤。新队员先完成下文“独立环境”“模型与视频”“运行”；相同输入文件尚未建立仓库内可访问的共享入口，无法仅靠克隆仓库复现这组709帧结果。
 
 ```powershell
 .\.venv-inference\Scripts\python.exe -m perception.main --model "code_pre/2025 智能网联汽车-曾熙桐/代码工程/感知题代码/best.pt" --video work/inference/trafic_camera.mp4 --output-dir runs/perception-diagnostic-001 --device cpu --headless --save-video
@@ -70,10 +70,10 @@ python -m perception.main --model "路径/best.pt" --video "路径/sample.mp4" -
 
 完整推理使用 `.venv-inference`，离线测试的 `.venv` 可以继续保留。两者的 NumPy 版本不同：恢复的 Ultralytics 8.3.107 要求 NumPy 不高于 2.1.1。不要在离线测试环境中混装两个依赖清单。
 
-在仓库根目录执行：
+先按[仿真环境准备](../docs/team/仿真环境准备.md#1-安装carla)安装Python 3.10（运行感知不需要安装CARLA）。以下均在仓库根目录的PowerShell执行，虚拟环境仅首次创建：
 
 ```powershell
-python -m venv .venv-inference
+py -3.10 -m venv .venv-inference
 .\.venv-inference\Scripts\python.exe -m pip install -r perception/requirements.txt
 .\.venv-inference\Scripts\python.exe -m pip check
 .\.venv-inference\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
@@ -116,16 +116,24 @@ a8d408a5a33823c3c593d90c55c9e2c1c1da970ee5b67f5440107b9f308ca6af
 
 ### 运行
 
-先用前 30 帧试跑，下面两个输入路径需换成自己的实际路径：
+先取得上述可信模型和待测视频。在仓库根目录的PowerShell运行以下整段，按提示输入各自电脑上的完整文件路径，不加外层引号。变量仅在当前终端有效；换终端后重新输入。
 
 ```powershell
-.\.venv-inference\Scripts\python.exe -m perception.main --model "本地路径/best.pt" --video "本地路径/sample.mp4" --output-dir "runs/smoke-001" --device cpu --headless --max-frames 30 --save-video
+$modelPath = Read-Host '输入best.pt的完整路径（不加引号）'
+$videoPath = Read-Host '输入待测视频的完整路径（不加引号）'
+if (-not (Test-Path -LiteralPath $modelPath -PathType Leaf)) { throw '模型文件不存在' }
+if (-not (Test-Path -LiteralPath $videoPath -PathType Leaf)) { throw '视频文件不存在' }
+Get-FileHash -LiteralPath $modelPath -Algorithm SHA256
+Get-FileHash -LiteralPath $videoPath -Algorithm SHA256
+$smokeOutput = 'runs/smoke-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff')
+.\.venv-inference\Scripts\python.exe -m perception.main --model $modelPath --video $videoPath --output-dir $smokeOutput --device cpu --headless --max-frames 30 --save-video
 ```
 
-完整处理时去掉 `--max-frames 30` 并改用新的输出目录：
+核对模型哈希与上文一致；若复现历史709帧实验，视频哈希也应与下文历史记录一致。自备其他视频只能复现运行流程，不能要求计数结果相同。30帧试跑成功后，在同一个终端完整处理：
 
 ```powershell
-.\.venv-inference\Scripts\python.exe -m perception.main --model "本地路径/best.pt" --video "本地路径/sample.mp4" --output-dir "runs/full-001" --device cpu --headless --save-video
+$fullOutput = 'runs/full-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff')
+.\.venv-inference\Scripts\python.exe -m perception.main --model $modelPath --video $videoPath --output-dir $fullOutput --device cpu --headless --save-video
 ```
 
 `--headless` 表示不打开窗口，后台逐帧处理；`--save-video` 保存检测框和轨迹，方便回看。省略 `--headless` 会显示窗口，Esc 提前结束，Tab切换标记显示。GUI模式仍需在自己的桌面上验证。输出目录必须为空或不存在，避免覆盖旧实验。
