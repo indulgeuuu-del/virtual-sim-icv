@@ -1,24 +1,24 @@
-#include "main.h"
+ï»¿#include "main.h"
 
 int main_track(void)
 {
-	timer.tic(); // ¿ªÊ¼¼ÆÊ±
-	initNavigation(validWayPoints, targetPath); // ¹æ»®Ö÷³µÂ·¾¶
-	SimOneAPI::GetTrafficLightList(trafficLightList); // »ñÈ¡µ±Ç°³¡¾°µÃ½»Í¨µÆÁĞ±í
+	timer.tic(); // å¼€å§‹è®¡æ—¶
+	initNavigation(validWayPoints, targetPath); // è§„åˆ’ä¸»è½¦è·¯å¾„
+	SimOneAPI::GetTrafficLightList(trafficLightList); // è·å–å½“å‰åœºæ™¯å¾—äº¤é€šç¯åˆ—è¡¨
 
 	while (true)
 	{
 		++frameCount;
 		int frame = SimOneAPI::Wait();
 		float Fps = calculateFps(frameCount, timer.get());
-		globalLogger(Logger::Color::BrightBlue) << "\n\nFrame = " << frameCount << "£¬Fps = " << Fps;
+		globalLogger(Logger::Color::BrightBlue) << "\n\nFrame = " << frameCount << "ï¼ŒFps = " << Fps;
 
-		recordEvaluation(); // ¸üĞÂ NEVC ÏµÍ³ÆÀ·Ö
+		recordEvaluation(); // æ›´æ–° NEVC ç³»ç»Ÿè¯„åˆ†
 
-		updateObstacleData(); // ¸üĞÂÕÏ°­Îï²ÎÊı
-		mainVehicle.update(); // ¸üĞÂÖ÷³µ²ÎÊı
+		updateObstacleData(); // æ›´æ–°éšœç¢ç‰©å‚æ•°
+		mainVehicle.update(); // æ›´æ–°ä¸»è½¦å‚æ•°
 
-		waitInitial(); // µÈ´ı·ÂÕæÆ½Ì¨³õÊ¼»¯Íê³É
+		waitInitial(); // ç­‰å¾…ä»¿çœŸå¹³å°åˆå§‹åŒ–å®Œæˆ
 
 		FlagType::isCrosswalkExist = getCrossWalk();
 		steerKpUse = steerKp;
@@ -26,7 +26,7 @@ int main_track(void)
 		obstacleList.clear();
 		stopLineList.clear();
 
-		// ÊÖ¶¯´´½¨Í£Ö¹Ïß
+		// æ‰‹åŠ¨åˆ›å»ºåœæ­¢çº¿
 		for (size_t i = 0, ie = manualStopLineReservoir.size(); i < ie; ++i)
 		{
 			if (caseIdx == manualStopLineReservoir[i].caseIndex && manualStopLineReservoir[i].srcFrame <= frameCount && frameCount <= manualStopLineReservoir[i].dstFrame)
@@ -35,26 +35,26 @@ int main_track(void)
 			}
 		}
 
-		/************************************************* ÕÏ°­Îï´¦Àí *************************************************/
-		std::vector<size_t> staticObstacleIndex; // ¾²Ö¹µÄÕÏ°­ÎïÓĞÄÄĞ©
-		std::vector<std::vector<size_t>> obstacleIDGroup; // ½«¾àÀë¹ı½üµÄ¾²Ö¹ÕÏ°­Îï·Ö×éºÏ³ÉÒÔºóµÄÕÏ°­Îï ID ÁĞ±í
-		std::vector<std::vector<size_t>> obstacleSGroup; // ½« S ×ø±êÏà½üµÄËùÓĞÕÏ°­Îï·Ö×éºÏ³ÉÒÔºóµÄÕÏ°­Îï ID ÁĞ±í
+		/************************************************* éšœç¢ç‰©å¤„ç† *************************************************/
+		std::vector<size_t> staticObstacleIndex; // é™æ­¢çš„éšœç¢ç‰©æœ‰å“ªäº›
+		std::vector<std::vector<size_t>> obstacleIDGroup; // å°†è·ç¦»è¿‡è¿‘çš„é™æ­¢éšœç¢ç‰©åˆ†ç»„åˆæˆä»¥åçš„éšœç¢ç‰© ID åˆ—è¡¨
+		std::vector<std::vector<size_t>> obstacleSGroup; // å°† S åæ ‡ç›¸è¿‘çš„æ‰€æœ‰éšœç¢ç‰©åˆ†ç»„åˆæˆä»¥åçš„éšœç¢ç‰© ID åˆ—è¡¨
 
 		for (size_t i = 0, ie = pObstacle->obstacleSize; i < ie; ++i)
 		{
-			if (UtilMath::calculateSpeed(pObstacle->obstacle[i].velX, pObstacle->obstacle[i].velY) < 1e-2) // ÈôÕÏ°­Îï¾²Ö¹
+			if (UtilMath::calculateSpeed(pObstacle->obstacle[i].velX, pObstacle->obstacle[i].velY) < 1e-2) // è‹¥éšœç¢ç‰©é™æ­¢
 			{
 				staticObstacleIndex.push_back(i);
 				continue;
 			}
 
-			obstacleList.push_back(Obstacle(pObstacle->obstacle[i])); // Èç¹ûÕÏ°­Îï²»ÊÇ¾²Ö¹µÄ£¬¾ÍÖ±½ÓÌî³ä½ø Obstacle Àà
+			obstacleList.push_back(Obstacle(pObstacle->obstacle[i])); // å¦‚æœéšœç¢ç‰©ä¸æ˜¯é™æ­¢çš„ï¼Œå°±ç›´æ¥å¡«å……è¿› Obstacle ç±»
 		}
 
-		groupObstacleByDist(staticObstacleIndex, groupingDistThres, obstacleIDGroup); // ºÏ³ÉÕÏ°­£¨Í¬ÀàĞÍµÄ¾²Ö¹ÕÏ°­£©
-		LOG << "dist·Ö×éÇé¿ö";
+		groupObstacleByDist(staticObstacleIndex, groupingDistThres, obstacleIDGroup); // åˆæˆéšœç¢ï¼ˆåŒç±»å‹çš„é™æ­¢éšœç¢ï¼‰
+		LOG << "diståˆ†ç»„æƒ…å†µ";
 		for (size_t i = 0; i < obstacleIDGroup.size(); ++i) {
-			std::cout << "×é " << i << "£º";
+			std::cout << "ç»„ " << i << "ï¼š";
 			for (size_t idx : obstacleIDGroup[i]) {
 				std::cout << idx << " ";
 			}
@@ -63,130 +63,131 @@ int main_track(void)
 
 		for (size_t i = 0, ie = obstacleIDGroup.size(); i < ie; ++i)
 		{
-			obstacleList.push_back(Obstacle(obstacleIDGroup[i])); // ½«·ÖºÃ×éµÄ¾²Ö¹ÕÏ°­ÎïÌî³ä½ø Obstacle Àà
+			obstacleList.push_back(Obstacle(obstacleIDGroup[i])); // å°†åˆ†å¥½ç»„çš„é™æ­¢éšœç¢ç‰©å¡«å……è¿› Obstacle ç±»
 		}
 
 		float groupingSThres = 1.0f;
-		groupObstacleByS(obstacleList, groupingSThres, obstacleSGroup); // ½« S ×ø±êÏà½üµÄÕÏ°­Îï·Ö×éºÏ³É
-		/************************************************* ÕÏ°­Îï´¦Àí *************************************************/
+		groupObstacleByS(obstacleList, groupingSThres, obstacleSGroup); // å°† S åæ ‡ç›¸è¿‘çš„éšœç¢ç‰©åˆ†ç»„åˆæˆ
+		mainVehicle.rebuildNeighborhood(); // ä½¿ç”¨æœ¬å¸§å®Œæˆçš„åˆ—è¡¨ï¼Œé¿å…æ—§ç´¢å¼•å…³è”åˆ°æ–°å¯¹è±¡
+		/************************************************* éšœç¢ç‰©å¤„ç† *************************************************/
 
-		if (!mainVehicle.leftLaneExist && !mainVehicle.rightLaneExist) // Èç¹ûÖ÷³µÃ»ÓĞÁÚ½Ó³µµÀ£¬ÔòÒªÅĞ¶ÏÊÇ·ñ´¦ÓÚµ¥³µµÀ±äµÀ¹¤¿ö
+		if (!mainVehicle.leftLaneExist && !mainVehicle.rightLaneExist) // å¦‚æœä¸»è½¦æ²¡æœ‰é‚»æ¥è½¦é“ï¼Œåˆ™è¦åˆ¤æ–­æ˜¯å¦å¤„äºå•è½¦é“å˜é“å·¥å†µ
 		{
-			/* ÎªÕÏ°­Îï´´½¨Í£Ö¹Ïß»òÎüÒıÏß */
+			/* ä¸ºéšœç¢ç‰©åˆ›å»ºåœæ­¢çº¿æˆ–å¸å¼•çº¿ */
 			for (size_t i = 0, ie = obstacleSGroup.size(); i < ie; ++i)
 			{
-				SSD::SimPoint3D feasiblePoint; // ¿ØÖÆµã
+				SSD::SimPoint3D feasiblePoint; // æ§åˆ¶ç‚¹
 
-				if (singleLaneChangeSwitcher.state && /* Ê×ÏÈÅĞ¶Ïµ¥³µµÀ±äµÀµÄ¿ª¹ØÊÇ·ñ´ò¿ª£¬ÈôÎ´´ò¿ªÔòÖ±½Ó½¨Á¢Í£Ö¹Ïß */
+				if (singleLaneChangeSwitcher.state && /* é¦–å…ˆåˆ¤æ–­å•è½¦é“å˜é“çš„å¼€å…³æ˜¯å¦æ‰“å¼€ï¼Œè‹¥æœªæ‰“å¼€åˆ™ç›´æ¥å»ºç«‹åœæ­¢çº¿ */
 					ModeRecognizer::process(obstacleSGroup[i], feasiblePoint) == ModeRecognizer::Mode::SINGE_LANE_CHANGE)
 				{
 					stopLineList.push_back(StopLine::AttractLine(obstacleList[obstacleSGroup.at(i).front()], feasiblePoint));
 				}
 				else for (size_t j = 0, je = obstacleSGroup[i].size(); j < je; ++j)
 				{
-					stopLineList.push_back(StopLine(obstacleList[obstacleSGroup.at(i).at(j)])); // ¹¹ÔìÍ£Ö¹Ïß
+					stopLineList.push_back(StopLine(obstacleList[obstacleSGroup.at(i).at(j)])); // æ„é€ åœæ­¢çº¿
 				}
 			}
 		}
-		else // Èç¹ûÓĞ¶àÌõ³µµÀ£¬Ôò¿ÉÒÔ·ÅĞÄ´´½¨Í£Ö¹Ïß
+		else // å¦‚æœæœ‰å¤šæ¡è½¦é“ï¼Œåˆ™å¯ä»¥æ”¾å¿ƒåˆ›å»ºåœæ­¢çº¿
 		{
-			/* Ö»ÎªÕÏ°­Îï´´½¨Í£Ö¹Ïß */
+			/* åªä¸ºéšœç¢ç‰©åˆ›å»ºåœæ­¢çº¿ */
 			for (size_t i = 0, ie = obstacleList.size(); i < ie; ++i)
 			{
-				stopLineList.push_back(StopLine(obstacleList[i])); // ¹¹ÔìÍ£Ö¹Ïß
+				stopLineList.push_back(StopLine(obstacleList[i])); // æ„é€ åœæ­¢çº¿
 			}
 		}
 
-		/* ¼ì²â²¢´´½¨ºìÂÌµÆÍ£Ö¹Ïß */
+		/* æ£€æµ‹å¹¶åˆ›å»ºçº¢ç»¿ç¯åœæ­¢çº¿ */
 		if (getValidTrafficLight(trafficLightList, potentialLight)) stopLineList.push_back(StopLine(potentialLight));
 
 		float minDistance;
 		StopLine potentialStopLine;
-		if (calculateNearestStopLine(stopLineList, potentialStopLine, minDistance)) // Èç¹û´æÔÚ¾àÀëÖ÷³µ×î½üµÄÍ£Ö¹Ïß
+		if (calculateNearestStopLine(stopLineList, potentialStopLine, minDistance)) // å¦‚æœå­˜åœ¨è·ç¦»ä¸»è½¦æœ€è¿‘çš„åœæ­¢çº¿
 		{
-			globalLogger(Logger::Color::BrightGreen) << "¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª";
-			globalLogger(Logger::Color::BrightGreen) << "Ç±ÔÚÍ£Ö¹Ïß " << "£º";
-			globalLogger(Logger::Color::BrightGreen) << "ÀàĞÍ£º" << (potentialStopLine.type == StopLine::Type::Whole ? "È«Í£Ö¹Ïß" : (potentialStopLine.type == StopLine::Type::Single ? "°ëÍ£Ö¹Ïß" : "ÎüÒıÏß"));
-			globalLogger(Logger::Color::BrightGreen) << "²ßÂÔ£º" << ((potentialStopLine.strategy == StopLine::Strategy::StopStart) ? "Í£×ß" : "±äµÀ");
-			globalLogger(Logger::Color::BrightGreen) << "ºÏ·¨£º" << ((potentialStopLine.isValid == true) ? "ºÏ·¨" : "²»ºÏ·¨");
-			globalLogger(Logger::Color::BrightGreen) << "ºó·½£º" << ((potentialStopLine.isBehind == true) ? "Î»ÓÚÖ÷³µºóÃæ" : "Î»ÓÚÖ÷³µÇ°Ãæ");
-			globalLogger(Logger::Color::BrightGreen) << "Æğµã£º£¨" << potentialStopLine.src.x << "£¬" << potentialStopLine.src.y << "£©";
-			globalLogger(Logger::Color::BrightGreen) << "ÖÕµã£º£¨" << potentialStopLine.dst.x << "£¬" << potentialStopLine.dst.y << "£©";
+			globalLogger(Logger::Color::BrightGreen) << "â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”";
+			globalLogger(Logger::Color::BrightGreen) << "æ½œåœ¨åœæ­¢çº¿ " << "ï¼š";
+			globalLogger(Logger::Color::BrightGreen) << "ç±»å‹ï¼š" << (potentialStopLine.type == StopLine::Type::Whole ? "å…¨åœæ­¢çº¿" : (potentialStopLine.type == StopLine::Type::Single ? "åŠåœæ­¢çº¿" : "å¸å¼•çº¿"));
+			globalLogger(Logger::Color::BrightGreen) << "ç­–ç•¥ï¼š" << ((potentialStopLine.strategy == StopLine::Strategy::StopStart) ? "åœèµ°" : "å˜é“");
+			globalLogger(Logger::Color::BrightGreen) << "åˆæ³•ï¼š" << ((potentialStopLine.isValid == true) ? "åˆæ³•" : "ä¸åˆæ³•");
+			globalLogger(Logger::Color::BrightGreen) << "åæ–¹ï¼š" << ((potentialStopLine.isBehind == true) ? "ä½äºä¸»è½¦åé¢" : "ä½äºä¸»è½¦å‰é¢");
+			globalLogger(Logger::Color::BrightGreen) << "èµ·ç‚¹ï¼šï¼ˆ" << potentialStopLine.src.x << "ï¼Œ" << potentialStopLine.src.y << "ï¼‰";
+			globalLogger(Logger::Color::BrightGreen) << "ç»ˆç‚¹ï¼šï¼ˆ" << potentialStopLine.dst.x << "ï¼Œ" << potentialStopLine.dst.y << "ï¼‰";
 
-			/* È«Í£Ö¹Ïß£¬Ö÷³µµÄ²ßÂÔÊÇÍ£×ß */
+			/* å…¨åœæ­¢çº¿ï¼Œä¸»è½¦çš„ç­–ç•¥æ˜¯åœèµ° */
 			if (potentialStopLine.type == StopLine::Type::Whole && potentialStopLine.strategy == StopLine::Strategy::StopStart)
 			{
-				float d0 = 0.05272 * mainVehicle.speed * mainVehicle.speed + 0.06714 * mainVehicle.speed - 0.02188; // d0 ÊÇÉ²³µ¾àÀë
-				if (potentialStopLine.toVehicleDist - potentialStopLine.offset - 4.38046 <= d0 + stopLineDistThres) // d0 + x ±íÊ¾ÒªÔÚÍ£Ö¹Ïß x Ã×Ç°Í£ÏÂÀ´£¬ - 4.38046 ´ú±í¼õÈ¥ÖÊĞÄµ½³µÍ·µÄ¾àÀë
+				float d0 = 0.05272 * mainVehicle.speed * mainVehicle.speed + 0.06714 * mainVehicle.speed - 0.02188; // d0 æ˜¯åˆ¹è½¦è·ç¦»
+				if (potentialStopLine.toVehicleDist - potentialStopLine.offset - 4.38046 <= d0 + stopLineDistThres) // d0 + x è¡¨ç¤ºè¦åœ¨åœæ­¢çº¿ x ç±³å‰åœä¸‹æ¥ï¼Œ - 4.38046 ä»£è¡¨å‡å»è´¨å¿ƒåˆ°è½¦å¤´çš„è·ç¦»
 				{
-					pControl->throttle = 0;  // Á¢¼´Í£Ö¹¼ÓËÙ£¨É²³µ£©
+					pControl->throttle = 0;  // ç«‹å³åœæ­¢åŠ é€Ÿï¼ˆåˆ¹è½¦ï¼‰
 				}
 			}
-			/* °ëÍ£Ö¹Ïß£¬Ö÷³µµÄ²ßÂÔÊÇ±äµÀ */
+			/* åŠåœæ­¢çº¿ï¼Œä¸»è½¦çš„ç­–ç•¥æ˜¯å˜é“ */
 			else if (potentialStopLine.type == StopLine::Type::Single && potentialStopLine.strategy == StopLine::Strategy::LaneChange)
 			{
-				if (potentialStopLine.velocityPlanar < 1e-4 && frameCount >= 10) // ¾²Ö¹µÄ°ëÍ£Ö¹Ïß
+				if (potentialStopLine.velocityPlanar < 1e-4 && frameCount >= 10) // é™æ­¢çš„åŠåœæ­¢çº¿
 				{
-					LOG << "¾²Ö¹µÄ";
+					LOG << "é™æ­¢çš„";
 
 					getLaneChangePath(potentialStopLine);
 				}
-				else // ÒÆ¶¯µÄ°ëÍ£Ö¹Ïß
+				else // ç§»åŠ¨çš„åŠåœæ­¢çº¿
 				{
-					LOG << "ÒÆ¶¯µÄ";
+					LOG << "ç§»åŠ¨çš„";
 
 					//getLaneChangePath(potentialStopLine, potentialStopLine.velocityPlanar);
 					if (mobileSingleStoplineSwitcher.state) getLaneChangePath(potentialStopLine);
 				}
 			}
-			/* ÎüÒıÏß£¬Ö÷³µµÄ²ßÂÔÊÇ±äµÀ */
+			/* å¸å¼•çº¿ï¼Œä¸»è½¦çš„ç­–ç•¥æ˜¯å˜é“ */
 			else if (potentialStopLine.type == StopLine::Type::Attract && potentialStopLine.strategy == StopLine::Strategy::LaneChange)
 			{
-				if (potentialStopLine.toVehicleDist < laneChangeDistThres) // ¾àÀëĞ¡ÓÚãĞÖµ£¬¿ªÊ¼±äµÀ
+				if (potentialStopLine.toVehicleDist < laneChangeDistThres) // è·ç¦»å°äºé˜ˆå€¼ï¼Œå¼€å§‹å˜é“
 				{
 					SSD::SimPoint3DVector wayPoints;
 					wayPoints.push_back(mainVehicle.pt);
 					wayPoints.push_back(potentialStopLine.mid);
-					ASSERT(equidistantSampling(wayPoints, targetPath, 0.2), "ÎüÒıÏßµÈ¾à²ÉÑùÉú³ÉÂ·¾¶Ê§°Ü");
+					ASSERT(equidistantSampling(wayPoints, targetPath, 0.2), "å¸å¼•çº¿ç­‰è·é‡‡æ ·ç”Ÿæˆè·¯å¾„å¤±è´¥");
 
-					// ÒÑ¾­µ½´ïÄ¿±êµã£¬¹æ»®µ½ÖÕµãµÄ¹ì¼£
+					// å·²ç»åˆ°è¾¾ç›®æ ‡ç‚¹ï¼Œè§„åˆ’åˆ°ç»ˆç‚¹çš„è½¨è¿¹
 					if (UtilMath::planarDistance(mainVehicle.pt, potentialStopLine.mid) < achieveThres)
 					{
 						SSD::SimPoint3D destinationPos(initialPath.back());
-						initialPath.clear(); // ¸üĞÂÆğµãºÍÖÕµã
+						initialPath.clear(); // æ›´æ–°èµ·ç‚¹å’Œç»ˆç‚¹
 						initialPath.push_back(mainVehicle.pt);
 						initialPath.push_back(destinationPos);
 						targetPath.clear();
-						ASSERT(SimOneAPI::GenerateRoute(initialPath, validWayPoints, targetPath), "Ê¹ÓÃ A* Éú³ÉÖ÷³µÂ·¾¶¹æ»®Ê§°Ü");
+						ASSERT(SimOneAPI::GenerateRoute(initialPath, validWayPoints, targetPath), "ä½¿ç”¨ A* ç”Ÿæˆä¸»è½¦è·¯å¾„è§„åˆ’å¤±è´¥");
 					}
 				}
 			}
 		}
 
-		// ³¬³µËÙ¶È¹æ»®£¨Õâ¸öÖ»ÄÜ´¦ÀíÖ÷³µ¼´½«±äµÀ£¬¶øÖ÷³µºó·½ÓÖÓĞÒ»Á¾¿ìËÙĞĞÊ»µÄ¶ÔÊÖ³µÁ¾µÄÇé¿ö£¬²»ÄÜ´¦ÀíÒÆ¶¯µÄ°ëÍ£Ö¹Ïß£©
-		// »¹ĞèÒª´¦ÀíÄÇĞ©ÔÚÖ÷³µÇ°·½ĞĞÊ»µÄÒÆ¶¯°ëÍ£Ö¹Ïß
+		// è¶…è½¦é€Ÿåº¦è§„åˆ’ï¼ˆè¿™ä¸ªåªèƒ½å¤„ç†ä¸»è½¦å³å°†å˜é“ï¼Œè€Œä¸»è½¦åæ–¹åˆæœ‰ä¸€è¾†å¿«é€Ÿè¡Œé©¶çš„å¯¹æ‰‹è½¦è¾†çš„æƒ…å†µï¼Œä¸èƒ½å¤„ç†ç§»åŠ¨çš„åŠåœæ­¢çº¿ï¼‰
+		// è¿˜éœ€è¦å¤„ç†é‚£äº›åœ¨ä¸»è½¦å‰æ–¹è¡Œé©¶çš„ç§»åŠ¨åŠåœæ­¢çº¿
 		// calculateOvertakingSpeed(obstacleList);
 
-		if (overtakeSwitcher.state) /* ÁÚÓò³¬³µ */
+		if (overtakeSwitcher.state) /* é‚»åŸŸè¶…è½¦ */
 		{
-			// Èç¹û×óÇ°ÁÚÓòÓĞ³µ£¬ÇÒÖ÷³µ¹ì¼£µÄÖÕµãÂäÔÚ×óÇ°ÁÚÓòÄÚ
+			// å¦‚æœå·¦å‰é‚»åŸŸæœ‰è½¦ï¼Œä¸”ä¸»è½¦è½¨è¿¹çš„ç»ˆç‚¹è½åœ¨å·¦å‰é‚»åŸŸå†…
 			if (!mainVehicle.neighborhood.leftFront.empty() &&
 				isSameRoadId(m_SampleGetNearMostLane(targetPath.back()), mainVehicle.laneLink.leftNeighborLaneName))
 			{
-				// ÕÒµ½×óÇ°ÁÚÓòÄÚËÙ¶È×îÂı¡¢µ«ÊÇ²»¾²Ö¹µÄ³µ
+				// æ‰¾åˆ°å·¦å‰é‚»åŸŸå†…é€Ÿåº¦æœ€æ…¢ã€ä½†æ˜¯ä¸é™æ­¢çš„è½¦
 				const Obstacle* vehicle = mainVehicle.neighborhood.findSlowestMovingObstacle(mainVehicle.neighborhood.leftFront);
-				LOG << "×óÇ°ÓĞ³µ";
-				if (vehicle != nullptr) // Èç¹ûÄÜ¹»ÕÒµ½Ò»Á¾·Ç¾²Ö¹µÄ¶ÔÊÖ³µÁ¾£¬²Å¼ÌĞøÍùÏÂÌÖÂÛ
+				LOG << "å·¦å‰æœ‰è½¦";
+				if (vehicle != nullptr) // å¦‚æœèƒ½å¤Ÿæ‰¾åˆ°ä¸€è¾†éé™æ­¢çš„å¯¹æ‰‹è½¦è¾†ï¼Œæ‰ç»§ç»­å¾€ä¸‹è®¨è®º
 				{
-					// Èç¹û¸Ã¶ÔÊÖ³µÁ¾µÄ¹ì¼£ÓëÖ÷³µ½«À´µÄ¹ì¼£Ïà½»
+					// å¦‚æœè¯¥å¯¹æ‰‹è½¦è¾†çš„è½¨è¿¹ä¸ä¸»è½¦å°†æ¥çš„è½¨è¿¹ç›¸äº¤
 					if (isTrajInterfere(targetPath, *vehicle) ||
 						UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
 						|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
 						)
 						//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
 					{
-						LOG << "Óë×óÇ°³µ¹ì¼£Ïà½»";
-						static AdaptiveFollowing LFfollower(followingKp, followingKi, followingKd, 20.0f); // ×óÇ°ÁÚÓò¸ú³µÆ÷
+						LOG << "ä¸å·¦å‰è½¦è½¨è¿¹ç›¸äº¤";
+						static AdaptiveFollowing LFfollower(followingKp, followingKi, followingKd, 20.0f); // å·¦å‰é‚»åŸŸè·Ÿè½¦å™¨
 						LFfollower.update(vehicle->velocityPlanar, UtilMath::planarDistance(mainVehicle.pt, vehicle->pt));
 						pControl->throttle = mainVehicle.neighborhood.vlf = LFfollower.getSpeed();
 						mainVehicle.neighborhood.blf = true;
@@ -194,21 +195,21 @@ int main_track(void)
 				}
 			}
 
-			// Èç¹ûÓÒÇ°ÁÚÓòÓĞ³µ£¬ÇÒÖ÷³µ¹ì¼£µÄÖÕµãÂäÔÚÓÒÇ°ÁÚÓòÄÚ
+			// å¦‚æœå³å‰é‚»åŸŸæœ‰è½¦ï¼Œä¸”ä¸»è½¦è½¨è¿¹çš„ç»ˆç‚¹è½åœ¨å³å‰é‚»åŸŸå†…
 			if (!mainVehicle.neighborhood.rightFront.empty() &&
 				isSameRoadId(m_SampleGetNearMostLane(targetPath.back()), mainVehicle.laneLink.rightNeighborLaneName))
 			{
-				// ÕÒµ½ÓÒÇ°ÁÚÓòÄÚËÙ¶È×îÂı¡¢µ«ÊÇ²»¾²Ö¹µÄ³µ
+				// æ‰¾åˆ°å³å‰é‚»åŸŸå†…é€Ÿåº¦æœ€æ…¢ã€ä½†æ˜¯ä¸é™æ­¢çš„è½¦
 				const Obstacle* vehicle = mainVehicle.neighborhood.findSlowestMovingObstacle(mainVehicle.neighborhood.rightFront);
-				LOG << "Èç¹ûÓÒÇ°ÁÚÓòÓĞ³µ£¬ÇÒÖ÷³µ¹ì¼£µÄÖÕµãÂäÔÚÓÒÇ°ÁÚÓòÄÚ";
+				LOG << "å¦‚æœå³å‰é‚»åŸŸæœ‰è½¦ï¼Œä¸”ä¸»è½¦è½¨è¿¹çš„ç»ˆç‚¹è½åœ¨å³å‰é‚»åŸŸå†…";
 
-				if (vehicle != nullptr) // Èç¹ûÄÜ¹»ÕÒµ½Ò»Á¾·Ç¾²Ö¹µÄ¶ÔÊÖ³µÁ¾£¬²Å¼ÌĞøÍùÏÂÌÖÂÛ
+				if (vehicle != nullptr) // å¦‚æœèƒ½å¤Ÿæ‰¾åˆ°ä¸€è¾†éé™æ­¢çš„å¯¹æ‰‹è½¦è¾†ï¼Œæ‰ç»§ç»­å¾€ä¸‹è®¨è®º
 				{
 					///*	for(auto&point: vehicle->predictionGM)
 					//	{
 					//		LOG << point.x << "," << point.y;
 					//	}*/
-						// Èç¹û¸Ã¶ÔÊÖ³µÁ¾µÄ¹ì¼£ÓëÖ÷³µ½«À´µÄ¹ì¼£Ïà½»
+						// å¦‚æœè¯¥å¯¹æ‰‹è½¦è¾†çš„è½¨è¿¹ä¸ä¸»è½¦å°†æ¥çš„è½¨è¿¹ç›¸äº¤
 					if (isTrajInterfere(targetPath, *vehicle) ||
 						UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
 						|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
@@ -216,32 +217,32 @@ int main_track(void)
 
 						//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
 					{
-						LOG << "ÔÚÓÒÇ°²âÇøÓò";
-						static AdaptiveFollowing RFfollower(followingKp, followingKi, followingKd, 20.0f); // ÓÒÇ°ÁÚÓò¸ú³µÆ÷
+						LOG << "åœ¨å³å‰æµ‹åŒºåŸŸ";
+						static AdaptiveFollowing RFfollower(followingKp, followingKi, followingKd, 20.0f); // å³å‰é‚»åŸŸè·Ÿè½¦å™¨
 						RFfollower.update(vehicle->velocityPlanar, UtilMath::planarDistance(mainVehicle.pt, vehicle->pt));
 						pControl->throttle = mainVehicle.neighborhood.vrf = RFfollower.getSpeed();
 						mainVehicle.neighborhood.brf = true;
-						LOG << "Èç¹ûÓÒÇ°ÁÚÓòÓĞ³µ£¬ÇÒÖ÷³µ¹ì¼£µÄÖÕµãÂäÔÚÓÒÇ°ÁÚÓòÄÚ£¬¸Ã¶ÔÊÖ³µÁ¾µÄ¹ì¼£ÓëÖ÷³µ½«À´µÄ¹ì¼£Ïà½»";
+						LOG << "å¦‚æœå³å‰é‚»åŸŸæœ‰è½¦ï¼Œä¸”ä¸»è½¦è½¨è¿¹çš„ç»ˆç‚¹è½åœ¨å³å‰é‚»åŸŸå†…ï¼Œè¯¥å¯¹æ‰‹è½¦è¾†çš„è½¨è¿¹ä¸ä¸»è½¦å°†æ¥çš„è½¨è¿¹ç›¸äº¤";
 					}
 				}
 			}
-			// Èç¹ûÇ°ÁÚÓòÓĞ³µ£¬ÇÒÖ÷³µ¹ì¼£µÄÖÕµãÂäÔÚÇ°ÁÚÓòÄÚ
+			// å¦‚æœå‰é‚»åŸŸæœ‰è½¦ï¼Œä¸”ä¸»è½¦è½¨è¿¹çš„ç»ˆç‚¹è½åœ¨å‰é‚»åŸŸå†…
 			if (!mainVehicle.neighborhood.front.empty()
 				&& isSameRoadId(m_SampleGetNearMostLane(targetPath.back()), mainVehicle.laneID))
-				// ÓÅ»¯½¨Òé£ºÈç¹û¿ç¹ıÂ·¿Ú»á³öÎÊÌâ£¡£¡£¡£¡
+				// ä¼˜åŒ–å»ºè®®ï¼šå¦‚æœè·¨è¿‡è·¯å£ä¼šå‡ºé—®é¢˜ï¼ï¼ï¼ï¼
 
 			{
-				LOG << "Ç°ÃæÓĞ¶«Î÷";
-				// ÕÒµ½Ç°ÁÚÓòÄÚËÙ¶È×îÂı¡¢µ«ÊÇ²»¾²Ö¹µÄ³µ
+				LOG << "å‰é¢æœ‰ä¸œè¥¿";
+				// æ‰¾åˆ°å‰é‚»åŸŸå†…é€Ÿåº¦æœ€æ…¢ã€ä½†æ˜¯ä¸é™æ­¢çš„è½¦
 				const Obstacle* vehicle = mainVehicle.neighborhood.findSlowestMovingObstacle(mainVehicle.neighborhood.front);
-				if (vehicle != nullptr) // Èç¹ûÄÜ¹»ÕÒµ½Ò»Á¾·Ç¾²Ö¹µÄ¶ÔÊÖ³µÁ¾£¬²Å¼ÌĞøÍùÏÂÌÖÂÛ
+				if (vehicle != nullptr) // å¦‚æœèƒ½å¤Ÿæ‰¾åˆ°ä¸€è¾†éé™æ­¢çš„å¯¹æ‰‹è½¦è¾†ï¼Œæ‰ç»§ç»­å¾€ä¸‹è®¨è®º
 				{
-					// Èç¹û¸Ã¶ÔÊÖ³µÁ¾µÄ¹ì¼£ÓëÖ÷³µ½«À´µÄ¹ì¼£Ïà½»
+					// å¦‚æœè¯¥å¯¹æ‰‹è½¦è¾†çš„è½¨è¿¹ä¸ä¸»è½¦å°†æ¥çš„è½¨è¿¹ç›¸äº¤
 					/*if (isTrajInterfere(targetPath, *vehicle) ||
 						UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))*/
 					{
-						LOG << "Ç°ÓĞ³µ";
-						static AdaptiveFollowing Ffollower(followingKp, followingKi, followingKd, 20.0f); // Ç°ÁÚÓò¸ú³µÆ÷
+						LOG << "å‰æœ‰è½¦";
+						static AdaptiveFollowing Ffollower(followingKp, followingKi, followingKd, 20.0f); // å‰é‚»åŸŸè·Ÿè½¦å™¨
 						Ffollower.update(vehicle->velocityPlanar, UtilMath::planarDistance(mainVehicle.pt, vehicle->pt));
 						pControl->throttle = mainVehicle.neighborhood.vf = Ffollower.getSpeed();
 						mainVehicle.neighborhood.bf = true;
@@ -249,28 +250,28 @@ int main_track(void)
 				}
 			}
 
-			// Èç¹ûºóÁÚÓòÓĞ³µ
+			// å¦‚æœåé‚»åŸŸæœ‰è½¦
 			if (!mainVehicle.neighborhood.back.empty())
 			{
-				// ÕÒµ½ºóÁÚÓòÄÚËÙ¶È×î¿ì¡¢µ«ÊÇ²»¾²Ö¹µÄ³µ
+				// æ‰¾åˆ°åé‚»åŸŸå†…é€Ÿåº¦æœ€å¿«ã€ä½†æ˜¯ä¸é™æ­¢çš„è½¦
 				const Obstacle* vehicle = mainVehicle.neighborhood.findFastestMovingObstacle(mainVehicle.neighborhood.back);
-				if (vehicle != nullptr) // Èç¹ûÄÜ¹»ÕÒµ½Ò»Á¾·Ç¾²Ö¹µÄ¶ÔÊÖ³µÁ¾£¬²Å¼ÌĞøÍùÏÂÌÖÂÛ
+				if (vehicle != nullptr) // å¦‚æœèƒ½å¤Ÿæ‰¾åˆ°ä¸€è¾†éé™æ­¢çš„å¯¹æ‰‹è½¦è¾†ï¼Œæ‰ç»§ç»­å¾€ä¸‹è®¨è®º
 				{
-					// Èç¹û¸Ã¶ÔÊÖ³µÁ¾µÄËÙ¶È´óÓÚÖ÷³µ
+					// å¦‚æœè¯¥å¯¹æ‰‹è½¦è¾†çš„é€Ÿåº¦å¤§äºä¸»è½¦
 					if (vehicle->velocityPlanar > caseTargetSpeed)
 					{
-						LOG << "ºóÓĞ¿ì³µ";
-						LOG << "ºó³µÊÇ·ñÓëÖ÷³µ¸ÉÉæ£º" << isTrajInterfere(targetPath, *vehicle);
-						LOG << "ºó³µÊÇ·ñÓëÖ÷³µ¹ì¼£Ïà½»£º" << UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath);
-						// Èç¹û¸Ã¶ÔÊÖ³µÁ¾µÄ¹ì¼£ÓëÖ÷³µ½«À´µÄ¹ì¼£Ïà½»
+						LOG << "åæœ‰å¿«è½¦";
+						LOG << "åè½¦æ˜¯å¦ä¸ä¸»è½¦å¹²æ¶‰ï¼š" << isTrajInterfere(targetPath, *vehicle);
+						LOG << "åè½¦æ˜¯å¦ä¸ä¸»è½¦è½¨è¿¹ç›¸äº¤ï¼š" << UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath);
+						// å¦‚æœè¯¥å¯¹æ‰‹è½¦è¾†çš„è½¨è¿¹ä¸ä¸»è½¦å°†æ¥çš„è½¨è¿¹ç›¸äº¤
 						if (isTrajInterfere(targetPath, *vehicle) ||
 							UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
 							|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
 							)
 							//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
 						{
-							LOG << "ºóÓĞ¿ì³µÓëÖ÷³µÏà½»";
-							static AdaptiveLeading BFollowing(followingKp, followingKi, followingKd, 20.0f); // ºóÁÚÓò·´Ïò¸ú³µÆ÷
+							LOG << "åæœ‰å¿«è½¦ä¸ä¸»è½¦ç›¸äº¤";
+							static AdaptiveLeading BFollowing(followingKp, followingKi, followingKd, 20.0f); // åé‚»åŸŸåå‘è·Ÿè½¦å™¨
 							BFollowing.update(vehicle->velocityPlanar, UtilMath::planarDistance(mainVehicle.pt, vehicle->pt));
 							pControl->throttle = mainVehicle.neighborhood.vb = BFollowing.getSpeed();
 							mainVehicle.neighborhood.bb = true;
@@ -279,30 +280,30 @@ int main_track(void)
 				}
 			}
 
-			// Èç¹û×óºóÁÚÓòÓĞ³µ
+			// å¦‚æœå·¦åé‚»åŸŸæœ‰è½¦
 			if (!mainVehicle.neighborhood.leftBack.empty())
 			{
-				// ÕÒµ½×óºóÁÚÓòÄÚËÙ¶È×î¿ì¡¢µ«ÊÇ²»¾²Ö¹µÄ³µ
+				// æ‰¾åˆ°å·¦åé‚»åŸŸå†…é€Ÿåº¦æœ€å¿«ã€ä½†æ˜¯ä¸é™æ­¢çš„è½¦
 				const Obstacle* vehicle = mainVehicle.neighborhood.findFastestMovingObstacle(mainVehicle.neighborhood.leftBack);
 
-				if (vehicle != nullptr) // Èç¹ûÄÜ¹»ÕÒµ½Ò»Á¾·Ç¾²Ö¹µÄ¶ÔÊÖ³µÁ¾£¬²Å¼ÌĞøÍùÏÂÌÖÂÛ
+				if (vehicle != nullptr) // å¦‚æœèƒ½å¤Ÿæ‰¾åˆ°ä¸€è¾†éé™æ­¢çš„å¯¹æ‰‹è½¦è¾†ï¼Œæ‰ç»§ç»­å¾€ä¸‹è®¨è®º
 				{
-					LOG << "×óºóÓĞ³µ";
-					// Èç¹û¸Ã¶ÔÊÖ³µÁ¾µÄËÙ¶È´óÓÚÖ÷³µ
+					LOG << "å·¦åæœ‰è½¦";
+					// å¦‚æœè¯¥å¯¹æ‰‹è½¦è¾†çš„é€Ÿåº¦å¤§äºä¸»è½¦
 					if (vehicle->velocityPlanar > caseTargetSpeed)
 					{
-						LOG << "×óºóºó³µÊÇ·ñÓëÖ÷³µ¸ÉÉæ£º" << isTrajInterfere(targetPath, *vehicle);
-						LOG << "×óºóºó³µÊÇ·ñÓëÖ÷³µ¹ì¼£Ïà½»£º" << UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath);
-						// Èç¹û¸Ã¶ÔÊÖ³µÁ¾µÄ¹ì¼£ÓëÖ÷³µ½«À´µÄ¹ì¼£Ïà½»
+						LOG << "å·¦ååè½¦æ˜¯å¦ä¸ä¸»è½¦å¹²æ¶‰ï¼š" << isTrajInterfere(targetPath, *vehicle);
+						LOG << "å·¦ååè½¦æ˜¯å¦ä¸ä¸»è½¦è½¨è¿¹ç›¸äº¤ï¼š" << UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath);
+						// å¦‚æœè¯¥å¯¹æ‰‹è½¦è¾†çš„è½¨è¿¹ä¸ä¸»è½¦å°†æ¥çš„è½¨è¿¹ç›¸äº¤
 						if (isTrajInterfere(targetPath, *vehicle) ||
 							UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
 							|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
 							)
 							//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
 						{
-							LOG << "×óºóÓĞ³µÏà½»";
+							LOG << "å·¦åæœ‰è½¦ç›¸äº¤";
 
-							static AdaptiveLeading LBFollowing(followingKp, followingKi, followingKd, 20.0f); // ×óºóÁÚÓò·´Ïò¸ú³µÆ÷
+							static AdaptiveLeading LBFollowing(followingKp, followingKi, followingKd, 20.0f); // å·¦åé‚»åŸŸåå‘è·Ÿè½¦å™¨
 							LBFollowing.update(vehicle->velocityPlanar, UtilMath::planarDistance(mainVehicle.pt, vehicle->pt));
 							pControl->throttle = mainVehicle.neighborhood.vlb = LBFollowing.getSpeed();
 							mainVehicle.neighborhood.blb = true;
@@ -311,29 +312,29 @@ int main_track(void)
 				}
 			}
 
-			// Èç¹ûÓÒºóÁÚÓòÓĞ³µ
+			// å¦‚æœå³åé‚»åŸŸæœ‰è½¦
 			if (!mainVehicle.neighborhood.rightBack.empty())
 			{
-				// ÕÒµ½ÓÒºóÁÚÓòÄÚËÙ¶È×î¿ì¡¢µ«ÊÇ²»¾²Ö¹µÄ³µ
+				// æ‰¾åˆ°å³åé‚»åŸŸå†…é€Ÿåº¦æœ€å¿«ã€ä½†æ˜¯ä¸é™æ­¢çš„è½¦
 				const Obstacle* vehicle = mainVehicle.neighborhood.findFastestMovingObstacle(mainVehicle.neighborhood.rightBack);
 
-				if (vehicle != nullptr) // Èç¹ûÄÜ¹»ÕÒµ½Ò»Á¾·Ç¾²Ö¹µÄ¶ÔÊÖ³µÁ¾£¬²Å¼ÌĞøÍùÏÂÌÖÂÛ
+				if (vehicle != nullptr) // å¦‚æœèƒ½å¤Ÿæ‰¾åˆ°ä¸€è¾†éé™æ­¢çš„å¯¹æ‰‹è½¦è¾†ï¼Œæ‰ç»§ç»­å¾€ä¸‹è®¨è®º
 				{
-					// Èç¹û¸Ã¶ÔÊÖ³µÁ¾µÄËÙ¶È´óÓÚÖ÷³µ
+					// å¦‚æœè¯¥å¯¹æ‰‹è½¦è¾†çš„é€Ÿåº¦å¤§äºä¸»è½¦
 
 					if (vehicle->velocityPlanar > caseTargetSpeed)
 					{
-						LOG << "ÓÒºóÓĞ³µ";
-						LOG << "ÓÒºóºó³µÊÇ·ñÓëÖ÷³µ¸ÉÉæ£º" << isTrajInterfere(targetPath, *vehicle);
-						LOG << "ÓÒºóºó³µÊÇ·ñÓëÖ÷³µ¹ì¼£Ïà½»£º" << UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath);
-						// Èç¹û¸Ã¶ÔÊÖ³µÁ¾µÄ¹ì¼£ÓëÖ÷³µ½«À´µÄ¹ì¼£Ïà½»
+						LOG << "å³åæœ‰è½¦";
+						LOG << "å³ååè½¦æ˜¯å¦ä¸ä¸»è½¦å¹²æ¶‰ï¼š" << isTrajInterfere(targetPath, *vehicle);
+						LOG << "å³ååè½¦æ˜¯å¦ä¸ä¸»è½¦è½¨è¿¹ç›¸äº¤ï¼š" << UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath);
+						// å¦‚æœè¯¥å¯¹æ‰‹è½¦è¾†çš„è½¨è¿¹ä¸ä¸»è½¦å°†æ¥çš„è½¨è¿¹ç›¸äº¤
 						if (isTrajInterfere(targetPath, *vehicle) ||
 							UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
 							|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
 							)
 						{
-							LOG << "ÓÒºóÓĞ³µÓëÖ÷³µÏà½»";
-							static AdaptiveLeading RBFollowing(followingKp, followingKi, followingKd, 20.0f); // ÓÒºóÁÚÓò·´Ïò¸ú³µÆ÷
+							LOG << "å³åæœ‰è½¦ä¸ä¸»è½¦ç›¸äº¤";
+							static AdaptiveLeading RBFollowing(followingKp, followingKi, followingKd, 20.0f); // å³åé‚»åŸŸåå‘è·Ÿè½¦å™¨
 							RBFollowing.update(vehicle->velocityPlanar, UtilMath::planarDistance(mainVehicle.pt, vehicle->pt));
 							pControl->throttle = mainVehicle.neighborhood.vrb = RBFollowing.getSpeed();
 							mainVehicle.neighborhood.brb = true;
@@ -342,25 +343,25 @@ int main_track(void)
 				}
 			}
 
-			// Èç¹û×óÁÚÓòÓĞ³µ
+			// å¦‚æœå·¦é‚»åŸŸæœ‰è½¦
 			if (!mainVehicle.neighborhood.left.empty())
 			{
-				// ÕÒµ½×óÁÚÓòÄÚËÙ¶È×îÂı¡¢µ«ÊÇ²»¾²Ö¹µÄ³µ
+				// æ‰¾åˆ°å·¦é‚»åŸŸå†…é€Ÿåº¦æœ€æ…¢ã€ä½†æ˜¯ä¸é™æ­¢çš„è½¦
 				const Obstacle* vehicle = mainVehicle.neighborhood.findSlowestMovingObstacle(mainVehicle.neighborhood.left);
 
-				if (vehicle != nullptr) // Èç¹ûÄÜ¹»ÕÒµ½Ò»Á¾·Ç¾²Ö¹µÄ¶ÔÊÖ³µÁ¾£¬²Å¼ÌĞøÍùÏÂÌÖÂÛ
+				if (vehicle != nullptr) // å¦‚æœèƒ½å¤Ÿæ‰¾åˆ°ä¸€è¾†éé™æ­¢çš„å¯¹æ‰‹è½¦è¾†ï¼Œæ‰ç»§ç»­å¾€ä¸‹è®¨è®º
 				{
-					LOG << "×óÓĞ³µ";
+					LOG << "å·¦æœ‰è½¦";
 
-					// Èç¹û¸Ã¶ÔÊÖ³µÁ¾µÄ¹ì¼£ÓëÖ÷³µ½«À´µÄ¹ì¼£Ïà½»
+					// å¦‚æœè¯¥å¯¹æ‰‹è½¦è¾†çš„è½¨è¿¹ä¸ä¸»è½¦å°†æ¥çš„è½¨è¿¹ç›¸äº¤
 					if (isTrajInterfere(targetPath, *vehicle) ||
 						UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
 						|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
 						)
 						//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
 					{
-						LOG << "×óÓĞ³µÓëÖ÷³µÏà½»";
-						static AdaptiveLeading LFollowing(followingKp, followingKi, followingKd, 20.0f); // ×óÁÚÓò·´Ïò¸ú³µÆ÷
+						LOG << "å·¦æœ‰è½¦ä¸ä¸»è½¦ç›¸äº¤";
+						static AdaptiveLeading LFollowing(followingKp, followingKi, followingKd, 20.0f); // å·¦é‚»åŸŸåå‘è·Ÿè½¦å™¨
 						LFollowing.update(vehicle->velocityPlanar, UtilMath::planarDistance(mainVehicle.pt, vehicle->pt));
 						pControl->throttle = mainVehicle.neighborhood.vl = LFollowing.getSpeed();
 						mainVehicle.neighborhood.bl = true;
@@ -368,33 +369,33 @@ int main_track(void)
 				}
 			}
 
-			// Èç¹ûÓÒÁÚÓòÓĞ³µ
+			// å¦‚æœå³é‚»åŸŸæœ‰è½¦
 			if (!mainVehicle.neighborhood.right.empty())
 			{
-				// ÕÒµ½ÓÒÁÚÓòÄÚËÙ¶È×îÂı¡¢µ«ÊÇ²»¾²Ö¹µÄ³µ
+				// æ‰¾åˆ°å³é‚»åŸŸå†…é€Ÿåº¦æœ€æ…¢ã€ä½†æ˜¯ä¸é™æ­¢çš„è½¦
 				const Obstacle* vehicle = mainVehicle.neighborhood.findSlowestMovingObstacle(mainVehicle.neighborhood.right);
 
-				if (vehicle != nullptr) // Èç¹ûÄÜ¹»ÕÒµ½Ò»Á¾·Ç¾²Ö¹µÄ¶ÔÊÖ³µÁ¾£¬²Å¼ÌĞøÍùÏÂÌÖÂÛ
+				if (vehicle != nullptr) // å¦‚æœèƒ½å¤Ÿæ‰¾åˆ°ä¸€è¾†éé™æ­¢çš„å¯¹æ‰‹è½¦è¾†ï¼Œæ‰ç»§ç»­å¾€ä¸‹è®¨è®º
 				{
-					LOG << "ÓÒÓĞ³µ";
+					LOG << "å³æœ‰è½¦";
 
-					// Èç¹û¸Ã¶ÔÊÖ³µÁ¾µÄ¹ì¼£ÓëÖ÷³µ½«À´µÄ¹ì¼£Ïà½»
+					// å¦‚æœè¯¥å¯¹æ‰‹è½¦è¾†çš„è½¨è¿¹ä¸ä¸»è½¦å°†æ¥çš„è½¨è¿¹ç›¸äº¤
 					if (isTrajInterfere(targetPath, *vehicle) ||
 						UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
 						|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
 						)
 						//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
 					{
-						LOG << "ÓÒÓĞ³µÓëÖ÷³µÏà½»";
+						LOG << "å³æœ‰è½¦ä¸ä¸»è½¦ç›¸äº¤";
 
-						static AdaptiveLeading RFollowing(followingKp, followingKi, followingKd, 20.0f); // ÓÒÁÚÓò·´Ïò¸ú³µÆ÷
+						static AdaptiveLeading RFollowing(followingKp, followingKi, followingKd, 20.0f); // å³é‚»åŸŸåå‘è·Ÿè½¦å™¨
 						RFollowing.update(vehicle->velocityPlanar, UtilMath::planarDistance(mainVehicle.pt, vehicle->pt));
 						pControl->throttle = mainVehicle.neighborhood.vr = RFollowing.getSpeed();
 						mainVehicle.neighborhood.br = true;
 					}
 				}
 			}
-			// 1. LF¡¢LB / RF¡¢RB
+			// 1. LFã€LB / RFã€RB
 			if (mainVehicle.neighborhood.blf && mainVehicle.neighborhood.blb)
 			{
 				pControl->throttle = std::max(mainVehicle.neighborhood.vlf, mainVehicle.neighborhood.vlb);
@@ -404,7 +405,7 @@ int main_track(void)
 				pControl->throttle = std::max(mainVehicle.neighborhood.vrf, mainVehicle.neighborhood.vrb);
 			}
 
-			// 2. L¡¢LB / R¡¢RB
+			// 2. Lã€LB / Rã€RB
 			if (mainVehicle.neighborhood.bl && mainVehicle.neighborhood.blb)
 			{
 				pControl->throttle = std::max(mainVehicle.neighborhood.vl, mainVehicle.neighborhood.vlb);
@@ -414,7 +415,7 @@ int main_track(void)
 				pControl->throttle = std::max(mainVehicle.neighborhood.vr, mainVehicle.neighborhood.vrb);
 			}
 
-			// 3. B¡¢LB / B¡¢RB
+			// 3. Bã€LB / Bã€RB
 			if (mainVehicle.neighborhood.bb && mainVehicle.neighborhood.blb)
 			{
 				pControl->throttle = std::max(mainVehicle.neighborhood.vb, mainVehicle.neighborhood.vlb);
@@ -424,7 +425,7 @@ int main_track(void)
 				pControl->throttle = std::max(mainVehicle.neighborhood.vb, mainVehicle.neighborhood.vrb);
 			}
 
-			// 4. F¡¢LB / F¡¢RB
+			// 4. Fã€LB / Fã€RB
 			if (mainVehicle.neighborhood.bf && mainVehicle.neighborhood.blb)
 			{
 				pControl->throttle = std::min(mainVehicle.neighborhood.vf, mainVehicle.neighborhood.vlb);
@@ -434,13 +435,13 @@ int main_track(void)
 				pControl->throttle = std::min(mainVehicle.neighborhood.vf, mainVehicle.neighborhood.vrb);
 			}
 
-			// 5. LB¡¢RB
+			// 5. LBã€RB
 			if (mainVehicle.neighborhood.blb && mainVehicle.neighborhood.brb)
 			{
 				pControl->throttle = std::max(mainVehicle.neighborhood.vlb, mainVehicle.neighborhood.vrb);
 			}
 
-			// 6. R¡¢LB / L¡¢RB
+			// 6. Rã€LB / Lã€RB
 			if (mainVehicle.neighborhood.br && mainVehicle.neighborhood.blb)
 			{
 				pControl->throttle = std::max(mainVehicle.neighborhood.vr, mainVehicle.neighborhood.vlb);
@@ -450,7 +451,7 @@ int main_track(void)
 				pControl->throttle = std::max(mainVehicle.neighborhood.vl, mainVehicle.neighborhood.vrb);
 			}
 
-			// 7. LB¡¢RF / RB¡¢LF
+			// 7. LBã€RF / RBã€LF
 			if (mainVehicle.neighborhood.blb && mainVehicle.neighborhood.brf)
 			{
 				pControl->throttle = std::max(mainVehicle.neighborhood.vlb, mainVehicle.neighborhood.vrf);
@@ -460,7 +461,7 @@ int main_track(void)
 				pControl->throttle = std::max(mainVehicle.neighborhood.vrb, mainVehicle.neighborhood.vlf);
 			}
 
-			// 8. L¡¢LF / R¡¢RF
+			// 8. Lã€LF / Rã€RF
 			if (mainVehicle.neighborhood.bl && mainVehicle.neighborhood.blf)
 			{
 				pControl->throttle = std::max(mainVehicle.neighborhood.vl, mainVehicle.neighborhood.vlf);
@@ -470,7 +471,7 @@ int main_track(void)
 				pControl->throttle = std::max(mainVehicle.neighborhood.vr, mainVehicle.neighborhood.vrf);
 			}
 
-			// 9. B¡¢L / B¡¢R
+			// 9. Bã€L / Bã€R
 			if (mainVehicle.neighborhood.bb && mainVehicle.neighborhood.bl)
 			{
 				pControl->throttle = std::max(mainVehicle.neighborhood.vb, mainVehicle.neighborhood.vl);
@@ -480,7 +481,7 @@ int main_track(void)
 				pControl->throttle = std::max(mainVehicle.neighborhood.vb, mainVehicle.neighborhood.vr);
 			}
 
-			// 10. F¡¢L / F¡¢R
+			// 10. Fã€L / Fã€R
 			if (mainVehicle.neighborhood.bf && mainVehicle.neighborhood.bl)
 			{
 				pControl->throttle = std::max(mainVehicle.neighborhood.vf, mainVehicle.neighborhood.vl);
@@ -490,13 +491,13 @@ int main_track(void)
 				pControl->throttle = std::max(mainVehicle.neighborhood.vf, mainVehicle.neighborhood.vr);
 			}
 
-			// 11. L¡¢R
+			// 11. Lã€R
 			if (mainVehicle.neighborhood.bl && mainVehicle.neighborhood.br)
 			{
 				pControl->throttle = std::max(mainVehicle.neighborhood.vl, mainVehicle.neighborhood.vr);
 			}
 
-			// 12. L¡¢RF / R¡¢LF
+			// 12. Lã€RF / Rã€LF
 			if (mainVehicle.neighborhood.bl && mainVehicle.neighborhood.brf)
 			{
 				pControl->throttle = std::max(mainVehicle.neighborhood.vl, mainVehicle.neighborhood.vrf);
@@ -506,7 +507,7 @@ int main_track(void)
 				pControl->throttle = std::max(mainVehicle.neighborhood.vr, mainVehicle.neighborhood.vlf);
 			}
 
-			// 13. B¡¢LF / B¡¢RF
+			// 13. Bã€LF / Bã€RF
 			if (mainVehicle.neighborhood.bb && mainVehicle.neighborhood.blf)
 			{
 				pControl->throttle = std::min(mainVehicle.neighborhood.vb, mainVehicle.neighborhood.vlf);
@@ -516,7 +517,7 @@ int main_track(void)
 				pControl->throttle = std::min(mainVehicle.neighborhood.vb, mainVehicle.neighborhood.vrf);
 			}
 
-			// 14. F¡¢LF / F¡¢RF
+			// 14. Fã€LF / Fã€RF
 			if (mainVehicle.neighborhood.bf && mainVehicle.neighborhood.blf)
 			{
 				pControl->throttle = std::min(mainVehicle.neighborhood.vf, mainVehicle.neighborhood.vlf);
@@ -526,13 +527,13 @@ int main_track(void)
 				pControl->throttle = std::min(mainVehicle.neighborhood.vf, mainVehicle.neighborhood.vrf);
 			}
 
-			// 15. LF¡¢RF
+			// 15. LFã€RF
 			if (mainVehicle.neighborhood.blf && mainVehicle.neighborhood.brf)
 			{
 				pControl->throttle = std::min(mainVehicle.neighborhood.vlf, mainVehicle.neighborhood.vrf);
 			}
 
-			// 16. B¡¢F
+			// 16. Bã€F
 			if (mainVehicle.neighborhood.bb && mainVehicle.neighborhood.bf)
 			{
 				pControl->throttle = std::min(mainVehicle.neighborhood.vb, mainVehicle.neighborhood.vf);
@@ -545,14 +546,14 @@ int main_track(void)
 		{
 			/*if (stopLineList[i].isValid)*/
 			{
-				globalLogger(Logger::Color::BrightGreen) << "¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª¡ª";
-				globalLogger(Logger::Color::BrightGreen) << "Í£Ö¹Ïß " << i << "£º";
-				globalLogger(Logger::Color::BrightGreen) << "ÀàĞÍ£º" << (stopLineList[i].type == StopLine::Type::Whole ? "È«Í£Ö¹Ïß" : (stopLineList[i].type == StopLine::Type::Single ? "°ëÍ£Ö¹Ïß" : "ÎüÒıÏß"));
-				globalLogger(Logger::Color::BrightGreen) << "²ßÂÔ£º" << ((stopLineList[i].strategy == StopLine::Strategy::StopStart) ? "Í£×ß" : "±äµÀ");
-				globalLogger(Logger::Color::BrightGreen) << "ºÏ·¨£º" << ((stopLineList[i].isValid == true) ? "ºÏ·¨" : "²»ºÏ·¨");
-				globalLogger(Logger::Color::BrightGreen) << "ºó·½£º" << ((stopLineList[i].isBehind == true) ? "Î»ÓÚÖ÷³µºóÃæ" : "Î»ÓÚÖ÷³µÇ°Ãæ");
-				globalLogger(Logger::Color::BrightGreen) << "Æğµã£º£¨" << stopLineList[i].src.x << "£¬" << stopLineList[i].src.y << "£©";
-				globalLogger(Logger::Color::BrightGreen) << "ÖÕµã£º£¨" << stopLineList[i].dst.x << "£¬" << stopLineList[i].dst.y << "£©";
+				globalLogger(Logger::Color::BrightGreen) << "â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”";
+				globalLogger(Logger::Color::BrightGreen) << "åœæ­¢çº¿ " << i << "ï¼š";
+				globalLogger(Logger::Color::BrightGreen) << "ç±»å‹ï¼š" << (stopLineList[i].type == StopLine::Type::Whole ? "å…¨åœæ­¢çº¿" : (stopLineList[i].type == StopLine::Type::Single ? "åŠåœæ­¢çº¿" : "å¸å¼•çº¿"));
+				globalLogger(Logger::Color::BrightGreen) << "ç­–ç•¥ï¼š" << ((stopLineList[i].strategy == StopLine::Strategy::StopStart) ? "åœèµ°" : "å˜é“");
+				globalLogger(Logger::Color::BrightGreen) << "åˆæ³•ï¼š" << ((stopLineList[i].isValid == true) ? "åˆæ³•" : "ä¸åˆæ³•");
+				globalLogger(Logger::Color::BrightGreen) << "åæ–¹ï¼š" << ((stopLineList[i].isBehind == true) ? "ä½äºä¸»è½¦åé¢" : "ä½äºä¸»è½¦å‰é¢");
+				globalLogger(Logger::Color::BrightGreen) << "èµ·ç‚¹ï¼šï¼ˆ" << stopLineList[i].src.x << "ï¼Œ" << stopLineList[i].src.y << "ï¼‰";
+				globalLogger(Logger::Color::BrightGreen) << "ç»ˆç‚¹ï¼šï¼ˆ" << stopLineList[i].dst.x << "ï¼Œ" << stopLineList[i].dst.y << "ï¼‰";
 			}
 		}
 

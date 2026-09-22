@@ -1,20 +1,20 @@
-#include "UtilMath.h"
+ï»¿#include "UtilMath.h"
 #include "UtilDriver.h"
 #include "utility.h"
 #include "controller.hpp"
 #include "vehicle.h"
 
-// Ä¬ÈÏ¹¹Ôì
+// é»˜è®¤æ„é€ 
 MainVehicle::MainVehicle()
 {
 	pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
-	pControl->throttle = 0.0f; // ËÙ¶È m/s
-	pControl->steering = 0.0f; // ´ò½Ç
-	pControl->brake = 0.0f; // É²³µ
-	pControl->handbrake = false; // ÊÖÉ²
-	pControl->isManualGear = false; // ÊÇ·ñÊÖ¶¯µ²
-	pControl->gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Neutral; // µ²Î»
-	pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_None; // ³µµÆ
+	pControl->throttle = 0.0f; // é€Ÿåº¦ m/s
+	pControl->steering = 0.0f; // æ‰“è§’
+	pControl->brake = 0.0f; // åˆ¹è½¦
+	pControl->handbrake = false; // æ‰‹åˆ¹
+	pControl->isManualGear = false; // æ˜¯å¦æ‰‹åŠ¨æŒ¡
+	pControl->gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Neutral; // æŒ¡ä½
+	pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_None; // è½¦ç¯
 	s = t = 0;
 
 	id = "0";
@@ -32,21 +32,23 @@ MainVehicle::MainVehicle()
 	nextLaneID = "";
 }
 
-// ¸üĞÂÖ÷³µÏêÏ¸²ÎÊı
+// æ›´æ–°ä¸»è½¦è¯¦ç»†å‚æ•°
 bool MainVehicle::update(int timeoutFrames)
 {
-	// ³õÊ¼»¯¿ØÖÆºÍ³µµÆ
-	pControl->throttle = caseTargetSpeed; // ËÙ¶È
-	pControl->steering = 0.0f; // ´ò½Ç
-	pControl->handbrake = false; // ÊÖÉ²
-	pControl->isManualGear = false; // ÊÇ·ñÊÖ¶¯µ²
-	pControl->gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive; // µ²Î»£ºÇ°½øµ²
+	// ä¸Šä¸€å¸§ç´¢å¼•åœ¨éšœç¢ç‰©åˆ—è¡¨é‡å»ºåå¤±æ•ˆï¼›æœ¬å¸§å®Œæˆåˆ—è¡¨æ„å»ºåå†è®¡ç®—é‚»åŸŸã€‚
+	neighborhood.clear();
+	// åˆå§‹åŒ–æ§åˆ¶å’Œè½¦ç¯
+	pControl->throttle = caseTargetSpeed; // é€Ÿåº¦
+	pControl->steering = 0.0f; // æ‰“è§’
+	pControl->handbrake = false; // æ‰‹åˆ¹
+	pControl->isManualGear = false; // æ˜¯å¦æ‰‹åŠ¨æŒ¡
+	pControl->gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive; // æŒ¡ä½ï¼šå‰è¿›æŒ¡
 	pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
-	pLight->signalLights = presetLight; // ³µµÆ
+	pLight->signalLights = presetLight; // è½¦ç¯
 
-	// »ñÈ¡Ö÷³µ GPS ĞÅÏ¢
+	// è·å–ä¸»è½¦ GPS ä¿¡æ¯
 	if (!SimOneAPI::GetGps(id, pGps.get()) && frameCount < timeoutFrames) {
-		globalLogger(Logger::Color::BrightMagenta) << "ÕıÔÚ»ñÈ¡Ö÷³µ GPS ĞÅÏ¢ ...";
+		globalLogger(Logger::Color::BrightMagenta) << "æ­£åœ¨è·å–ä¸»è½¦ GPS ä¿¡æ¯ ...";
 		//std::this_thread::sleep_for(std::chrono::milliseconds(100));
 	}
 	else
@@ -54,23 +56,23 @@ bool MainVehicle::update(int timeoutFrames)
 		if (!FlagType::isMainVehicleInitialized)
 		{
 			FlagType::isMainVehicleInitialized = true;
-			globalLogger(Logger::Color::BrightMagenta) << "Ö÷³µ GPS ³õÊ¼»¯³É¹¦";
+			globalLogger(Logger::Color::BrightMagenta) << "ä¸»è½¦ GPS åˆå§‹åŒ–æˆåŠŸ";
 		}
 	}
 
-	// ¼ÆËãÖ÷³µµÄÏêÏ¸²ÎÊı
-	pt = SSD::SimPoint3D(pGps->posX, pGps->posY, pGps->posZ); // Ö÷³µ×ø±ê
-	if (frameCount == 1) // µÚÒ»Ö¡µÄÊ±ºòÈÃÉÏ´ÎºÍ±¾´ÎµÄÖ÷³µµÀÂ· ID ÏàÍ¬
+	// è®¡ç®—ä¸»è½¦çš„è¯¦ç»†å‚æ•°
+	pt = SSD::SimPoint3D(pGps->posX, pGps->posY, pGps->posZ); // ä¸»è½¦åæ ‡
+	if (frameCount == 1) // ç¬¬ä¸€å¸§çš„æ—¶å€™è®©ä¸Šæ¬¡å’Œæœ¬æ¬¡çš„ä¸»è½¦é“è·¯ ID ç›¸åŒ
 	{
 		lastLaneID = laneID = m_SampleGetNearMostLane(pt);
 	}
 	else
 	{
-		lastLaneID = laneID; // ÉÏÒ»Ö¡Ö÷³µËùÔÚµÄµÀÂ· ID
-		laneID = m_SampleGetNearMostLane(pt); // Ö÷³µËùÔÚµÄµÀÂ· ID
+		lastLaneID = laneID; // ä¸Šä¸€å¸§ä¸»è½¦æ‰€åœ¨çš„é“è·¯ ID
+		laneID = m_SampleGetNearMostLane(pt); // ä¸»è½¦æ‰€åœ¨çš„é“è·¯ ID
 	}
 	SimOneAPI::GetLaneST(laneID, pt, s, t);
-	laneAzimuth = getLaneAzimuth(laneID); // Ö÷³µËùÔÚµÀÂ·µÄ·½Î»½Ç
+	laneAzimuth = getLaneAzimuth(laneID); // ä¸»è½¦æ‰€åœ¨é“è·¯çš„æ–¹ä½è§’
 
 	vx = pGps->velX;
 	vy = pGps->velY;
@@ -84,19 +86,19 @@ bool MainVehicle::update(int timeoutFrames)
 	std::string strLaneID(laneID.GetString());
 	isTwoSideRoad = SimOneAPI::IsTwoSideRoad(std::stoi(strLaneID.substr(0, strLaneID.find('_'))));
 
-	// »ñÈ¡Ö÷³µµÄ×óÓÒÁÚ½Ó³µµÀÇé¿ö
+	// è·å–ä¸»è½¦çš„å·¦å³é‚»æ¥è½¦é“æƒ…å†µ
 	leftLaneExist = rightLaneExist = false;
-	SimOneAPI::GetLaneLink(laneID, laneLink); // »ñÈ¡Ö÷³µËùÔÚµÄ³µµÀµÄÆäËûÁÚ½Ó³µµÀ
-	if (strlen(laneLink.leftNeighborLaneName.GetString()) != 0) // ´æÔÚ×óÁÚ½Ó³µµÀ
+	SimOneAPI::GetLaneLink(laneID, laneLink); // è·å–ä¸»è½¦æ‰€åœ¨çš„è½¦é“çš„å…¶ä»–é‚»æ¥è½¦é“
+	if (strlen(laneLink.leftNeighborLaneName.GetString()) != 0) // å­˜åœ¨å·¦é‚»æ¥è½¦é“
 	{
 		leftLaneExist = true;
 	}
-	if (strlen(laneLink.rightNeighborLaneName.GetString()) != 0) // ´æÔÚÓÒÁÚ½Ó³µµÀ
+	if (strlen(laneLink.rightNeighborLaneName.GetString()) != 0) // å­˜åœ¨å³é‚»æ¥è½¦é“
 	{
 		rightLaneExist = true;
 	}
 
-	/*LOG << "Ö÷³µµ±Ç°Î»ÖÃÎª£º" << pt.x << ", " << pt.y << ", " << "ËùÔÚ³µµÀÎª£º" << laneID.GetString();
+	/*LOG << "ä¸»è½¦å½“å‰ä½ç½®ä¸ºï¼š" << pt.x << ", " << pt.y << ", " << "æ‰€åœ¨è½¦é“ä¸ºï¼š" << laneID.GetString();
 	LOG << "predecessorLaneNameList.size = " << laneLink.predecessorLaneNameList.size();
 	LOG << "successorLaneNameList.size = " << laneLink.successorLaneNameList.size();
 
@@ -106,7 +108,7 @@ bool MainVehicle::update(int timeoutFrames)
 		LOG << "successorLaneNameList[" << i << "] = " << laneLink.successorLaneNameList[i].GetString();
 
 		long temp;
-		LOG << "successorLaneNameList[" << i << "] ÊÇ·ñÔÚÂ·¿ÚÄÚ£º" << (SimOneAPI::IsInJunction(laneLink.successorLaneNameList[i], temp) == true ? "true" : "false");
+		LOG << "successorLaneNameList[" << i << "] æ˜¯å¦åœ¨è·¯å£å†…ï¼š" << (SimOneAPI::IsInJunction(laneLink.successorLaneNameList[i], temp) == true ? "true" : "false");
 
 	}*/
 
@@ -123,7 +125,7 @@ bool MainVehicle::update(int timeoutFrames)
 			}
 		}
 
-		ASSERT(notJungleLane.size() < 2, "ºó¼ÌµÀÂ·ÖĞ²»ÊÇÂ·¿ÚµÄµÀÂ·´óÓÚÒ»Ìõ");
+		ASSERT(notJungleLane.size() < 2, "åç»§é“è·¯ä¸­ä¸æ˜¯è·¯å£çš„é“è·¯å¤§äºä¸€æ¡");
 
 		if (notJungleLane.empty()) nextLaneID = "none";
 		else
@@ -132,63 +134,68 @@ bool MainVehicle::update(int timeoutFrames)
 		}
 	}
 
-	// »ñÈ¡¸÷ÕÏ°­ÎïÏà¶ÔÓÚÖ÷³µµÄÁÚÓòÇé¿ö£¬µÚÒ»Ö¡µÄÊ±ºòÕÏ°­Îï¶ÔÏó»¹Ã»ÓĞ±»´´½¨£¬ÁÚÓò¶ÔÏóÒàÎª¿Õ
+	return FlagType::isMainVehicleInitialized;
+}
+
+// å¿…é¡»åœ¨æœ¬å¸§ obstacleList æ„å»ºå®Œæˆåè°ƒç”¨ï¼Œç›´åˆ°å†³ç­–ç»“æŸä¸èƒ½å†é‡æ’è¯¥åˆ—è¡¨ã€‚
+void MainVehicle::rebuildNeighborhood(void)
+{
 	static constexpr float OFFSET = 1.0f;
 	neighborhood.clear();
 	for (size_t i = 0, ie = obstacleList.size(); i < ie; ++i)
 	{
 		if (!isSameRoadId(obstacleList[i].laneID, mainVehicle.laneID)) continue;
 
-		// ÕÏ°­ÎïÔÚÇ°ÁÚÓò
+		// éšœç¢ç‰©åœ¨å‰é‚»åŸŸ
 		if (obstacleList[i].sRelativeToVehicle - mainVehicle.s > 0.5f * (MAIN_VEHICLE_LENGTH + OFFSET) &&
 			std::abs(obstacleList[i].tRelativeToVehicle - mainVehicle.t) <= 0.5f * (MAIN_VEHICLE_WIDTH + OFFSET))
 		{
 			neighborhood.front.push_back(i);
 		}
 
-		// ÕÏ°­ÎïÔÚºóÁÚÓò
+		// éšœç¢ç‰©åœ¨åé‚»åŸŸ
 		else if (obstacleList[i].sRelativeToVehicle - mainVehicle.s < -0.5f * (MAIN_VEHICLE_LENGTH + OFFSET) &&
 			std::abs(obstacleList[i].tRelativeToVehicle - mainVehicle.t) <= 0.5f * (MAIN_VEHICLE_WIDTH + OFFSET))
 		{
 			neighborhood.back.push_back(i);
 		}
 
-		// ÕÏ°­ÎïÔÚ×óÁÚÓò
+		// éšœç¢ç‰©åœ¨å·¦é‚»åŸŸ
 		else if (obstacleList[i].tRelativeToVehicle - mainVehicle.t > 0.5f * (MAIN_VEHICLE_WIDTH + OFFSET) &&
 			std::abs(obstacleList[i].sRelativeToVehicle - mainVehicle.s) <= 0.5f * (MAIN_VEHICLE_LENGTH + OFFSET))
 		{
 			neighborhood.left.push_back(i);
 		}
 
-		// ÕÏ°­ÎïÔÚÓÒÁÚÓò
+		// éšœç¢ç‰©åœ¨å³é‚»åŸŸ
 		else if (obstacleList[i].tRelativeToVehicle - mainVehicle.t < -0.5f * (MAIN_VEHICLE_WIDTH + OFFSET) &&
 			std::abs(obstacleList[i].sRelativeToVehicle - mainVehicle.s) <= 0.5f * (MAIN_VEHICLE_LENGTH + OFFSET))
 		{
 			neighborhood.right.push_back(i);
 		}
 
-		// ÕÏ°­ÎïÔÚ×óÇ°ÁÚÓò
+		// éšœç¢ç‰©åœ¨å·¦å‰é‚»åŸŸ
 		else if (obstacleList[i].sRelativeToVehicle - mainVehicle.s > 0.5f * (MAIN_VEHICLE_LENGTH + OFFSET) &&
 			obstacleList[i].tRelativeToVehicle - mainVehicle.t > 0.5f * (MAIN_VEHICLE_WIDTH + OFFSET))
 		{
 			neighborhood.leftFront.push_back(i);
 		}
 
-		// ÕÏ°­ÎïÔÚÓÒÇ°ÁÚÓò
+		// éšœç¢ç‰©åœ¨å³å‰é‚»åŸŸ
 		else if (obstacleList[i].sRelativeToVehicle - mainVehicle.s > 0.5f * (MAIN_VEHICLE_LENGTH + OFFSET) &&
 			obstacleList[i].tRelativeToVehicle - mainVehicle.t < -0.5f * (MAIN_VEHICLE_WIDTH + OFFSET))
 		{
 			neighborhood.rightFront.push_back(i);
 		}
 
-		// ÕÏ°­ÎïÔÚ×óºóÁÚÓò
+		// éšœç¢ç‰©åœ¨å·¦åé‚»åŸŸ
 		else if (obstacleList[i].sRelativeToVehicle - mainVehicle.s < -0.5f * (MAIN_VEHICLE_LENGTH + OFFSET) &&
 			obstacleList[i].tRelativeToVehicle - mainVehicle.t > 0.5f * (MAIN_VEHICLE_WIDTH + OFFSET))
 		{
 			neighborhood.leftBack.push_back(i);
 		}
 
-		// ÕÏ°­ÎïÔÚÓÒºóÁÚÓò
+		// éšœç¢ç‰©åœ¨å³åé‚»åŸŸ
 		else if (obstacleList[i].sRelativeToVehicle - mainVehicle.s < -0.5f * (MAIN_VEHICLE_LENGTH + OFFSET) &&
 			obstacleList[i].tRelativeToVehicle - mainVehicle.t < -0.5f * (MAIN_VEHICLE_WIDTH + OFFSET))
 		{
@@ -196,7 +203,7 @@ bool MainVehicle::update(int timeoutFrames)
 		}
 	}
 
-	// ¶ÔÃ¿¸öÁÚÓòÄÚµÄÕÏ°­Îï°´ËÙ¶È´Ó´óµ½Ğ¡ÅÅĞò
+	// å¯¹æ¯ä¸ªé‚»åŸŸå†…çš„éšœç¢ç‰©æŒ‰é€Ÿåº¦ä»å¤§åˆ°å°æ’åº
 	neighborhood.sort(neighborhood.front);
 	neighborhood.sort(neighborhood.back);
 	neighborhood.sort(neighborhood.left);
@@ -206,24 +213,23 @@ bool MainVehicle::update(int timeoutFrames)
 	neighborhood.sort(neighborhood.leftBack);
 	neighborhood.sort(neighborhood.rightBack);
 
-	return FlagType::isMainVehicleInitialized;
 }
 
-// ¸üĞÂÖ÷³µ¿ØÖÆ²ÎÊı
+// æ›´æ–°ä¸»è½¦æ§åˆ¶å‚æ•°
 void MainVehicle::drive(void)
 {
-	if (useDefaultPath) // Èç¹ûÊ¹ÓÃÄ¬ÈÏÂ·¾¶£¬PID ¿ØÖÆÆ÷½áºÏ´¿×·×ÙËã·¨´¦ÀíÄ¿±êÂ·¾¶£¬¼ÆËãÇ°ÂÖ´ò½Ç
+	if (useDefaultPath) // å¦‚æœä½¿ç”¨é»˜è®¤è·¯å¾„ï¼ŒPID æ§åˆ¶å™¨ç»“åˆçº¯è¿½è¸ªç®—æ³•å¤„ç†ç›®æ ‡è·¯å¾„ï¼Œè®¡ç®—å‰è½®æ‰“è§’
 	{
 		size_t carIndex;
 		double curvature;
-		double steering = UtilDriver::calculateSteering(targetPath, pGps.get(), carIndex); // Â·¾¶´¿×·×Ù¿ØÖÆ´ò½Ç
+		double steering = UtilDriver::calculateSteering(targetPath, pGps.get(), carIndex); // è·¯å¾„çº¯è¿½è¸ªæ§åˆ¶æ‰“è§’
 
-		if(FlagType::isManualTrackMode) // Ö»ÓĞÔÚÊÖ¶¯´òµãÄ£Ê½ÏÂ£¬½øĞĞÔöÒæ
+		if(FlagType::isManualTrackMode) // åªæœ‰åœ¨æ‰‹åŠ¨æ‰“ç‚¹æ¨¡å¼ä¸‹ï¼Œè¿›è¡Œå¢ç›Š
 		{
-			int forwardIndex = 30;	// È¡Ç°·½¶àÉÙ¸öµã
-			int backIndex = 20;		// È¡ºó·½¶àÉÙ¸öµã
+			int forwardIndex = 30;	// å–å‰æ–¹å¤šå°‘ä¸ªç‚¹
+			int backIndex = 20;		// å–åæ–¹å¤šå°‘ä¸ªç‚¹
 
-			// ¸ù¾İË÷Òı£¬È¡³öÒ»¶Î¾àÀëµÄ¹ì¼££¬¼ÆËãÇúÂÊ
+			// æ ¹æ®ç´¢å¼•ï¼Œå–å‡ºä¸€æ®µè·ç¦»çš„è½¨è¿¹ï¼Œè®¡ç®—æ›²ç‡
 			size_t endIndex = std::min(carIndex + forwardIndex, targetPath.size());
 			size_t startIndex = std::max(size_t(0), carIndex - backIndex);
 			if (carIndex >= targetPath.size()) curvature = 0.0;
@@ -231,58 +237,58 @@ void MainVehicle::drive(void)
 				std::vector<SSD::SimPoint3D> path(targetPath.begin() + carIndex, targetPath.begin() + endIndex);
 				curvature = approximateCurvature(path);
 				SSD::SimPoint3D &point = targetPath[endIndex-1];
-				LOG << "ÇúÏßÖÕµãÎ»ÖÃ£º" << point;
+				LOG << "æ›²çº¿ç»ˆç‚¹ä½ç½®ï¼š" << point;
 			}
-			LOG << "ºó·½ " << (carIndex - startIndex) << " ¸öµãµ½Ç°·½ " << (endIndex - carIndex) << " ¸öµãµÄ¹ì¼£µÄÇúÂÊ£º" << curvature;
+			LOG << "åæ–¹ " << (carIndex - startIndex) << " ä¸ªç‚¹åˆ°å‰æ–¹ " << (endIndex - carIndex) << " ä¸ªç‚¹çš„è½¨è¿¹çš„æ›²ç‡ï¼š" << curvature;
 
-			// ¸ù¾İËÙ¶ÈºÍÇúÂÊµÃµ½ÔöÒæ
+			// æ ¹æ®é€Ÿåº¦å’Œæ›²ç‡å¾—åˆ°å¢ç›Š
 			float speedGain = 0.08;
 			float curveGain = 30;
-			LOG << "ÔöÒæÇ°µÄ Kp£º" << steerKpUse;
+			LOG << "å¢ç›Šå‰çš„ Kpï¼š" << steerKpUse;
 			steerKpUse = steerKpUse + speedGain * mainVehicle.speed + curveGain * curvature;
-			LOG << "ËÙ¶ÈÔöÒæ£º" << speedGain * mainVehicle.speed << "£¬ÇúÂÊÔöÒæ£º" << curveGain * curvature << "£¬ÔöÒæºó Kp£º" << steerKpUse;
+			LOG << "é€Ÿåº¦å¢ç›Šï¼š" << speedGain * mainVehicle.speed << "ï¼Œæ›²ç‡å¢ç›Šï¼š" << curveGain * curvature << "ï¼Œå¢ç›Šå Kpï¼š" << steerKpUse;
 		}
 
 		steerPID.set(steerKpUse, steerKi, steerKdUse);
 		pControl->steering = steerPID.calculate(steering) - steeringOffsetKp * steeringOffset;
 	}
 
-	if (reverse) /* µ¹³µÄ£Ê½ */
+	if (reverse) /* å€’è½¦æ¨¡å¼ */
 	{
 		pControl->throttle = 3.0f;
 		pControl->steering = 0.0f;
 		pControl->gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse;
 	}
 
-	for (const auto& [start, end] : slideConfig) /* ¼ì²éÁï³µÅäÖÃ */
+	for (const auto& [start, end] : slideConfig) /* æ£€æŸ¥æºœè½¦é…ç½® */
 	{
-		static bool isSliding = false; // µ±Ç°ÊÇ·ñ´¦ÓÚ»¬ĞĞ×´Ì¬
+		static bool isSliding = false; // å½“å‰æ˜¯å¦å¤„äºæ»‘è¡ŒçŠ¶æ€
 
-		/* Èç¹ûµ±Ç°²»´¦ÓÚÁï³µ×´Ì¬£¬ÇÒÒÑµ½´ïÁï³µÆğµã */
+		/* å¦‚æœå½“å‰ä¸å¤„äºæºœè½¦çŠ¶æ€ï¼Œä¸”å·²åˆ°è¾¾æºœè½¦èµ·ç‚¹ */
 		if (!isSliding && UtilMath::planarDistance(mainVehicle.pt, start) < achieveThres) isSliding = true;
-		/* Èç¹ûµ±Ç°Õı´¦ÓÚÁï³µ×´Ì¬£¬ÇÒÒÑµ½´ïÁï³µÖÕµã */
+		/* å¦‚æœå½“å‰æ­£å¤„äºæºœè½¦çŠ¶æ€ï¼Œä¸”å·²åˆ°è¾¾æºœè½¦ç»ˆç‚¹ */
 		else if (isSliding && UtilMath::planarDistance(mainVehicle.pt, end) < achieveThres) isSliding = false;
 
-		LOG << "start£º" << start << "end£º" << end;
-		LOG << "Ö÷³µºÍ start µÄ¾àÀë£º" << UtilMath::planarDistance(mainVehicle.pt, start);
-		LOG << "Ö÷³µºÍ end µÄ¾àÀë£º" << UtilMath::planarDistance(mainVehicle.pt, end);
+		LOG << "startï¼š" << start << "endï¼š" << end;
+		LOG << "ä¸»è½¦å’Œ start çš„è·ç¦»ï¼š" << UtilMath::planarDistance(mainVehicle.pt, start);
+		LOG << "ä¸»è½¦å’Œ end çš„è·ç¦»ï¼š" << UtilMath::planarDistance(mainVehicle.pt, end);
 
-		/* ¸ù¾İÊÇ·ñ´¦ÓÚÁï³µ×´Ì¬À´¾ö¶¨µ²Î» */
+		/* æ ¹æ®æ˜¯å¦å¤„äºæºœè½¦çŠ¶æ€æ¥å†³å®šæŒ¡ä½ */
 		if (isSliding) pControl->gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Neutral;
 		else pControl->gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
 	}
-	LOG << "Ö÷³µÎ»ÖÃ£º" << mainVehicle.pt;
+	LOG << "ä¸»è½¦ä½ç½®ï¼š" << mainVehicle.pt;
 
 	if (caseIdx == 33)
 	{
 		pControl->steering = 0;
 	}
 
-	SimOneAPI::SetSignalLights(id, pLight.get()); // ÉèÖÃ³µÁ¾µÄ×ªÏòµÆ
-	SimOneAPI::SetDrive(id, pControl.get()); // ÉèÖÃ³µÁ¾µÄÓÍÃÅ´ò½Ç
+	SimOneAPI::SetSignalLights(id, pLight.get()); // è®¾ç½®è½¦è¾†çš„è½¬å‘ç¯
+	SimOneAPI::SetDrive(id, pControl.get()); // è®¾ç½®è½¦è¾†çš„æ²¹é—¨æ‰“è§’
 }
 
-// Çå³ıËùÓĞÁÚÓòĞÅÏ¢
+// æ¸…é™¤æ‰€æœ‰é‚»åŸŸä¿¡æ¯
 void Neighborhood::clear(void)
 {
 	vf = vb = vl = vr = vlf = vrf = vlb = vrb = 0.0f;
@@ -298,13 +304,13 @@ void Neighborhood::clear(void)
 	rightBack.clear();
 }
 
-// °´ËÙ¶È´Ó´óµ½Ğ¡¶Ô arr ÁÚÓòÄÚµÄÔªËØ½øĞĞÅÅÁĞ
+// æŒ‰é€Ÿåº¦ä»å¤§åˆ°å°å¯¹ arr é‚»åŸŸå†…çš„å…ƒç´ è¿›è¡Œæ’åˆ—
 void Neighborhood::sort(std::vector<size_t>& arr)
 {
 	std::sort(arr.begin(), arr.end(), [](auto& a, auto& b) { return obstacleList[a].velocityPlanar > obstacleList[b].velocityPlanar; });
 }
 
-// ´ÓºóÏòÇ°²éÕÒµÚÒ»¸öËÙ¶È²»Îª 0 µÄÕÏ°­Îï
+// ä»åå‘å‰æŸ¥æ‰¾ç¬¬ä¸€ä¸ªé€Ÿåº¦ä¸ä¸º 0 çš„éšœç¢ç‰©
 const Obstacle* Neighborhood::findSlowestMovingObstacle(const std::vector<size_t>& obstacleIndices, float speedThreshold)
 {
 	for (auto it = obstacleIndices.rbegin(); it != obstacleIndices.rend(); ++it)
@@ -316,7 +322,7 @@ const Obstacle* Neighborhood::findSlowestMovingObstacle(const std::vector<size_t
 		}
 	}
 
-	return nullptr; // ×¢Òâ£¡Èç¹û¸ÃÁÚÓòÖĞÈ«ÊÇ¾²Ö¹µÄÕÏ°­Îï£¬¾Í»á·µ»ØÒ»¸ö¿ÕÖ¸Õë
+	return nullptr; // æ³¨æ„ï¼å¦‚æœè¯¥é‚»åŸŸä¸­å…¨æ˜¯é™æ­¢çš„éšœç¢ç‰©ï¼Œå°±ä¼šè¿”å›ä¸€ä¸ªç©ºæŒ‡é’ˆ
 }
 
 const Obstacle* Neighborhood::findFastestMovingObstacle(const std::vector<size_t>& obstacleIndices, float speedThreshold)

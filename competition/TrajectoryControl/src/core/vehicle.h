@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include "SimOneServiceAPI.h"
 #include "define.h"
 
@@ -7,7 +7,7 @@
 
 class Neighborhood {
 public:
-	// ´¢´æµÄÊÇÔÚ obstacleList ÖĞµÄË÷Òı
+	// å‚¨å­˜çš„æ˜¯åœ¨ obstacleList ä¸­çš„ç´¢å¼•
 	std::vector<size_t> front;
 	std::vector<size_t> back;
 	std::vector<size_t> left;
@@ -23,15 +23,15 @@ public:
 	Neighborhood(void) { clear(); }
 	~Neighborhood(void) { clear(); }
 
-	// Çå³ıËùÓĞÁÚÓòĞÅÏ¢
+	// æ¸…é™¤æ‰€æœ‰é‚»åŸŸä¿¡æ¯
 	void clear(void);
 
-	// °´ËÙ¶È´Ó´óµ½Ğ¡¶Ô arr ÁÚÓòÄÚµÄÔªËØ½øĞĞÅÅÁĞ
+	// æŒ‰é€Ÿåº¦ä»å¤§åˆ°å°å¯¹ arr é‚»åŸŸå†…çš„å…ƒç´ è¿›è¡Œæ’åˆ—
 	void sort(std::vector<size_t>& arr);
 
-	// ´ÓºóÏòÇ°²éÕÒµÚÒ»¸öËÙ¶È²»Îª 0 µÄÕÏ°­Îï
+	// ä»åå‘å‰æŸ¥æ‰¾ç¬¬ä¸€ä¸ªé€Ÿåº¦ä¸ä¸º 0 çš„éšœç¢ç‰©
 	const Obstacle* findSlowestMovingObstacle(const std::vector<size_t>& obstacleIndices, float speedThreshold = 1e-2f);
-	// ´ÓÇ°Ïòºó²éÕÒµÚÒ»¸öËÙ¶È²»Îª 0 µÄÕÏ°­Îï
+	// ä»å‰å‘åæŸ¥æ‰¾ç¬¬ä¸€ä¸ªé€Ÿåº¦ä¸ä¸º 0 çš„éšœç¢ç‰©
 	const Obstacle* findFastestMovingObstacle(const std::vector<size_t>& obstacleIndices, float speedThreshold = 1e-2f);
 };
 
@@ -41,29 +41,32 @@ public:
 	bool leftLaneExist, rightLaneExist;
 	bool useDefaultPath;
 	bool reverse;
-	bool isTwoSideRoad; // Ö÷³µËùÔÚµÄµÀÂ·ÊÇ·ñË«Ïò³µµÀ
+	bool isTwoSideRoad; // ä¸»è½¦æ‰€åœ¨çš„é“è·¯æ˜¯å¦åŒå‘è½¦é“
 	float speed;
 	float vx, vy;
 	float roll, pitch, yaw;
-	float laneAzimuth; // Ö÷³µËù´¦µÀÂ·µÄ·½Î»½Ç
-	float steeringOffset; // Ö÷³µ´ò½ÇÒÖÖÆÁ¿
+	float laneAzimuth; // ä¸»è½¦æ‰€å¤„é“è·¯çš„æ–¹ä½è§’
+	float steeringOffset; // ä¸»è½¦æ‰“è§’æŠ‘åˆ¶é‡
 
 	SSD::SimPoint3D pt;
 	double s, t;
 	SSD::SimString laneID;
 	SSD::SimString lastLaneID;
-	SSD::SimString nextLaneID; // Ô¤²âµÄÖ÷³µ¼´½«µ½´ïµÄÏÂÒ»¸öµÀÂ·
+	SSD::SimString nextLaneID; // é¢„æµ‹çš„ä¸»è½¦å³å°†åˆ°è¾¾çš„ä¸‹ä¸€ä¸ªé“è·¯
 
 	HDMapStandalone::MLaneLink laneLink;
 	Neighborhood neighborhood;
 
 public:
-	// Ä¬ÈÏ¹¹Ôì
+	// é»˜è®¤æ„é€ 
 	MainVehicle();
 
-	// ¸üĞÂÖ÷³µÏêÏ¸²ÎÊı
+	// æ›´æ–°ä¸»è½¦è¯¦ç»†å‚æ•°
 	bool update(int timeoutFrames = 10);
 
-	// ¸üĞÂÖ÷³µ¿ØÖÆ²ÎÊı
+	// æœ¬å¸§éšœç¢ç‰©åˆ—è¡¨å®Œæˆåé‡å»ºé‚»åŸŸï¼›update()ä»…æ¸…ç©ºæ—§é‚»åŸŸã€‚
+	void rebuildNeighborhood(void);
+
+	// æ›´æ–°ä¸»è½¦æ§åˆ¶å‚æ•°
 	void drive(void);
 };
