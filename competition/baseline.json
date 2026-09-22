@@ -1,0 +1,391 @@
+{
+  "source_root": "code_pre/2025 智能网联汽车-曾熙桐/代码工程/【20250725.8 Traj】last version",
+  "source_commit": "900c6ba71fae2c5c11c4a6a677c33d65b089ee36",
+  "files": [
+    {
+      "path": "AVP/AVPSampleVisualization.py",
+      "sha256": "4637929e76adeca5524c276218ce3c2c5fd4be4c210bf0283522b540fecb4aa7",
+      "bytes": 1535
+    },
+    {
+      "path": "AVP/CMakeLists.txt",
+      "sha256": "bc8760dd0720782a57de5ec6dc6b03f1fe307442841d5e4aaaa4e21c26049c68",
+      "bytes": 3750
+    },
+    {
+      "path": "AVP/src/UtilAVP.hpp",
+      "sha256": "f1848c41868d9091102db7b209d895941b346ef96a06b02acd79eeeebfdce940",
+      "bytes": 7607
+    },
+    {
+      "path": "AVP/src/define.cpp",
+      "sha256": "9b26f81819b9462948c63c77ef72b1c836c3f74be4ca6f80222bd32e91e205ff",
+      "bytes": 1399
+    },
+    {
+      "path": "AVP/src/define.h",
+      "sha256": "c2e922e9d0add8ab641025de900e14da5f775d86f138bd91e0d68a425cec2aef",
+      "bytes": 2704
+    },
+    {
+      "path": "AVP/src/logger.hpp",
+      "sha256": "8f8566794669125c9d9152224d56544093c36c4caf2f9631f40d976c47646741",
+      "bytes": 7535
+    },
+    {
+      "path": "AVP/src/main.cpp",
+      "sha256": "2ee2d00bc6f938618a726c35bb87f2481e5750db3eb8de89f4dfffd81175417d",
+      "bytes": 10103
+    },
+    {
+      "path": "AVP/src/main.h",
+      "sha256": "a795608be9975d3231393060c95fcf76e19f75e9397ac202eb44557bc3305a97",
+      "bytes": 6287
+    },
+    {
+      "path": "AVP/src/process.cpp",
+      "sha256": "fcf8a0543eca13c1fd36ca8a06aab1c7c471b8ba7700069fb96553c2df2a358d",
+      "bytes": 6580
+    },
+    {
+      "path": "AVP/src/process.h",
+      "sha256": "de072616f892f70f53fed7508c3a7587bd5ebd0c4b672d3dbfd8f970de0060ef",
+      "bytes": 5277
+    },
+    {
+      "path": "AVP/src/timer.h",
+      "sha256": "2b30a933417341d3cecbb658e1da5799b9ab3772a8f88b630ee01872d6376fa4",
+      "bytes": 4436
+    },
+    {
+      "path": "AVP/src/trajectory.cpp",
+      "sha256": "774c51bc9ae13216ac5c39ad4c4bcb57de2a019674f7e0366ce09117a0d2e9b6",
+      "bytes": 4900
+    },
+    {
+      "path": "AVP/src/trajectory.h",
+      "sha256": "a33aea4d911b9e04b6716ef5784c7b04f2381510e75fdf34bf45d5a7792837f2",
+      "bytes": 353
+    },
+    {
+      "path": "TrajectoryControl/CMakeLists.txt",
+      "sha256": "43cea9fa5ef061e6a5adea6ac8e5dac43e25813bf08cb20deb0f13a0064d37bd",
+      "bytes": 3816
+    },
+    {
+      "path": "TrajectoryControl/m_strategy/41.stg",
+      "sha256": "07e58e38420cf48bfc01944548f9a551e81ee6123567a717cd98c199013c3563",
+      "bytes": 1293
+    },
+    {
+      "path": "TrajectoryControl/m_strategy/global.yaml",
+      "sha256": "27b12372c1a5ced8001b635c9eee164acdb23b7627e6a98723d7676d46c73b58",
+      "bytes": 144
+    },
+    {
+      "path": "TrajectoryControl/param.json",
+      "sha256": "cb94b75008db3395ece6a278cd307cab8154e17b7684cc14419ff38f7cb56725",
+      "bytes": 2753
+    },
+    {
+      "path": "TrajectoryControl/readme.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "TrajectoryControl/src/core/LaneChange.h",
+      "sha256": "2e5f9ac9219c0061a089c9246444995d251a2c2c2984e1a8c0b22e7a85a90131",
+      "bytes": 3520
+    },
+    {
+      "path": "TrajectoryControl/src/core/obstacle.cpp",
+      "sha256": "666c6f2f165ba2347a81b359fe0d77d2f47e9c7f131dd9330404413875a4bc18",
+      "bytes": 27623
+    },
+    {
+      "path": "TrajectoryControl/src/core/obstacle.h",
+      "sha256": "22442ef59ce736ff59d2e2256e3219e253fa6708bd5a8f04f610622d4e22baf8",
+      "bytes": 5232
+    },
+    {
+      "path": "TrajectoryControl/src/core/process.cpp",
+      "sha256": "7c9445cc9576bf21744400a2a7dbcf1fe54c7c1fb07697abd715601e7498d568",
+      "bytes": 9815
+    },
+    {
+      "path": "TrajectoryControl/src/core/process.h",
+      "sha256": "3c02c8295aa4caafc4b06bf7e6f3945687b354fc5e03e89d20e4d20e70066915",
+      "bytes": 2833
+    },
+    {
+      "path": "TrajectoryControl/src/core/stopline.cpp",
+      "sha256": "87f0228fef4840cbaaf4d97865cde2b62901829b62b5d1c5d620901518d85ce4",
+      "bytes": 15786
+    },
+    {
+      "path": "TrajectoryControl/src/core/stopline.h",
+      "sha256": "a575d3a7b4e2378f0323c30f64b1a8e146e56f4a22c0abaa38392e68d152fccd",
+      "bytes": 1872
+    },
+    {
+      "path": "TrajectoryControl/src/core/vehicle.cpp",
+      "sha256": "c19c62058a0274ec0b3f6179f976958988d3f82a57cb39944551021c93300946",
+      "bytes": 11647
+    },
+    {
+      "path": "TrajectoryControl/src/core/vehicle.h",
+      "sha256": "c0a23c36d41ab0bfd5443bd438441968967e99292a4e09915a138e0be9bdf95b",
+      "bytes": 1779
+    },
+    {
+      "path": "TrajectoryControl/src/define.cpp",
+      "sha256": "309c3a6b16dabbb82d14b03d1c64338463408d4cc552f7e303af7ad76faca421",
+      "bytes": 2924
+    },
+    {
+      "path": "TrajectoryControl/src/define.h",
+      "sha256": "bcf8ac9c77b56cb68c97098c5675fe029107b61a4e04d91a89bebe657173eea4",
+      "bytes": 3448
+    },
+    {
+      "path": "TrajectoryControl/src/main.cpp",
+      "sha256": "856adfa17c87a3271535adb635d1008eaf49dfa98b9bd9f70913d0e338e152f3",
+      "bytes": 5514
+    },
+    {
+      "path": "TrajectoryControl/src/main.h",
+      "sha256": "6e0cf95559682ba0f7e9e80074da4b835c9a6dbeb485413c501b7105c731472a",
+      "bytes": 1669
+    },
+    {
+      "path": "TrajectoryControl/src/main_follow.cpp",
+      "sha256": "b07d151e9297f21e127265ab11eed40428dd1fa4463207817bdd8af5b067594b",
+      "bytes": 1009
+    },
+    {
+      "path": "TrajectoryControl/src/main_manual.cpp",
+      "sha256": "bb81cd997bebd3438f432c2f0de42079da522b833696047a6bb94da2168a803a",
+      "bytes": 6141
+    },
+    {
+      "path": "TrajectoryControl/src/main_obtain.cpp",
+      "sha256": "1ab55df52625649230356393de31ec8b6ded87d8824ac24112964956af2f8dae",
+      "bytes": 2548
+    },
+    {
+      "path": "TrajectoryControl/src/main_track.cpp",
+      "sha256": "e54fe18cd1b8569c8f9043300771414125608e3fff760c1fab138f8cbcf1edc1",
+      "bytes": 24562
+    },
+    {
+      "path": "TrajectoryControl/src/manual/manual.cpp",
+      "sha256": "a70cfa84810574cbf45ffe5161be04339bbdc57ed51c37e2c2efc63c53da232e",
+      "bytes": 5563
+    },
+    {
+      "path": "TrajectoryControl/src/manual/manual.h",
+      "sha256": "e9caa39a9d09cfc730b62636f371037e4b2e197f0e5d09f2babcebc56d34d9f8",
+      "bytes": 1287
+    },
+    {
+      "path": "TrajectoryControl/src/tools/controller.hpp",
+      "sha256": "06431cb90e5865476ff696ad23a0385f7e716f7a0085a79a732921ce8510bc77",
+      "bytes": 4024
+    },
+    {
+      "path": "TrajectoryControl/src/tools/logger.hpp",
+      "sha256": "2a92db287cb291f70bee082162185e0388f8f15343a12e77fd3d3f550a86dcaa",
+      "bytes": 7616
+    },
+    {
+      "path": "TrajectoryControl/src/tools/prediction.cpp",
+      "sha256": "c0b98ae7431100ccade05dfe9ed3607904fe02c71c6907ed6691de8e85bffe80",
+      "bytes": 3593
+    },
+    {
+      "path": "TrajectoryControl/src/tools/prediction.h",
+      "sha256": "6291a6ef406f3a67ee9a91d86a84950558546b770458640a9af195308cd94c4c",
+      "bytes": 397
+    },
+    {
+      "path": "TrajectoryControl/src/tools/timer.h",
+      "sha256": "ca3717a66898b45ebce74cc8f171cc77e2513bd0d4682c832a9ed82cfa3b3460",
+      "bytes": 4279
+    },
+    {
+      "path": "TrajectoryControl/src/tools/utility.cpp",
+      "sha256": "1e5f656308885d265831b9023a12be505746ae6cf8c72db0a81ab2dd352cfce0",
+      "bytes": 3240
+    },
+    {
+      "path": "TrajectoryControl/src/tools/utility.h",
+      "sha256": "942ab13e440e90e38d1c8a29bbd32b8bc0ae411911c9b557d98f6ddeeac2a819",
+      "bytes": 1091
+    },
+    {
+      "path": "util/GetSignType.h",
+      "sha256": "19e8fe9141ed41f6a92a6ef6986b3dde72c7d36bec856408ca89ecd22562dc91",
+      "bytes": 573
+    },
+    {
+      "path": "util/UtilDriver.h",
+      "sha256": "2bdeaf5631422b26efdc8191fa9d4bb2a34f23f90a37a26306011b253c058bef",
+      "bytes": 3571
+    },
+    {
+      "path": "util/UtilMath.h",
+      "sha256": "ba53ac4824535d2d117125d153b8df9bd5aea8e7f4f34bcb67565ab4b238a144",
+      "bytes": 5719
+    },
+    {
+      "path": "util/UtilString.h",
+      "sha256": "41469d3f9de57595b20a5336888e86b4c485079c3cb94d645dcda65c80c42609",
+      "bytes": 752
+    },
+    {
+      "path": "util/debug/Yaml.cpp",
+      "sha256": "37d8fc12deab9771699dce0bdde7fc7eff637d7c431bdf59b2cd542b5db2e76a",
+      "bytes": 75796
+    },
+    {
+      "path": "util/debug/Yaml.hpp",
+      "sha256": "e645fe459683c91a61624527e9f460c1a62bf8a1ff9ea47cb663dc72d207ad9a",
+      "bytes": 15304
+    },
+    {
+      "path": "util/debug/json.hpp",
+      "sha256": "e50adfd67e606f8ba548a1a9c2237ccebb798b6b0e071c646439a932824828a2",
+      "bytes": 952680
+    },
+    {
+      "path": "util/debug/tinyxml2.cpp",
+      "sha256": "95f64e4cb06c9e147d5b12e8860c88898944858dfbc38fed92ebf918f1436554",
+      "bytes": 78553
+    },
+    {
+      "path": "util/debug/tinyxml2.h",
+      "sha256": "0f3c6e5a91b6d65caca3cc7239926455f21e488cff80ac3d27c74f5262fd2602",
+      "bytes": 74466
+    },
+    {
+      "path": "util/hdmap/SampleContainsLane.h",
+      "sha256": "58ac9a7daf49688bbd4bdbc65890894f47073661ac7a8692eb3187106ca68455",
+      "bytes": 493
+    },
+    {
+      "path": "util/hdmap/SampleGenerateRoute.h",
+      "sha256": "119bea059f12a2f7890b46173cc14c27779e2c083a3702adc267085ad58c6fab",
+      "bytes": 1105
+    },
+    {
+      "path": "util/hdmap/SampleGetCrossHatchList.h",
+      "sha256": "e3ca47f3ecd23f4907a1de6776cc1440859527da4db7808231c071cfaa73add1",
+      "bytes": 1044
+    },
+    {
+      "path": "util/hdmap/SampleGetCrosswalkList.h",
+      "sha256": "31cfe56b29326efd0ec4a9766a874ea04f09b0e08f0c24291ae37684074ede98",
+      "bytes": 1269
+    },
+    {
+      "path": "util/hdmap/SampleGetDistanceToLaneBoundary.h",
+      "sha256": "4929632a71dde1685cb43042b966bed10cfe330d01303204f196ded28933bc93",
+      "bytes": 903
+    },
+    {
+      "path": "util/hdmap/SampleGetHeights.h",
+      "sha256": "cdb85122c5f5667e45e2db96adb0f18603654a25ac53b20dfe27cb9a59181ab1",
+      "bytes": 912
+    },
+    {
+      "path": "util/hdmap/SampleGetInertialFromLaneST.h",
+      "sha256": "befcd6cfcb229e59f0a787e91206ae81d5979d41fc1feeabe17e60f773e93677",
+      "bytes": 763
+    },
+    {
+      "path": "util/hdmap/SampleGetLaneLink.h",
+      "sha256": "d0380c9273d3ed6da67bf84f0968d89513f1e0afc77ef56d547daab8ccf1c8ac",
+      "bytes": 1376
+    },
+    {
+      "path": "util/hdmap/SampleGetLaneMiddlePoint.h",
+      "sha256": "684d2e125fa1f0ce4141fc473cec19e5dae0f31d95a024bb0b7a9ba5a6b0958b",
+      "bytes": 846
+    },
+    {
+      "path": "util/hdmap/SampleGetLaneST.h",
+      "sha256": "bc2ec10cfa59390898719ec58f5cb7785912e112cf37d928e5ec3586de0095c8",
+      "bytes": 619
+    },
+    {
+      "path": "util/hdmap/SampleGetLaneSample.h",
+      "sha256": "374d6fefece0b09a651928dd5c667375287e98c6f35bf4482a252b1802d50dd5",
+      "bytes": 1888
+    },
+    {
+      "path": "util/hdmap/SampleGetLaneType.h",
+      "sha256": "6ac3c86067c5823f2c1f15c310fdd9b7e6bd1bebfb5068ef112190a7401f9c89",
+      "bytes": 2493
+    },
+    {
+      "path": "util/hdmap/SampleGetLaneWidth.h",
+      "sha256": "89cf1182efe7c391abf7b9e24dc435184227139a1550f216a75668a49c40404f",
+      "bytes": 546
+    },
+    {
+      "path": "util/hdmap/SampleGetNearLanes.h",
+      "sha256": "b23aef7cd2f83a39ed2fbfcd7cb76c89ffb7c11fde3c2a14c14188f858618ccf",
+      "bytes": 747
+    },
+    {
+      "path": "util/hdmap/SampleGetNearLanesWithAngle.h",
+      "sha256": "e6d7f2b0bb9748032ee01bc9eaf8a488e01aebc78fd8f5a22b00fd4fb74be590",
+      "bytes": 972
+    },
+    {
+      "path": "util/hdmap/SampleGetNearMostLane.h",
+      "sha256": "fa27b4e81483ddad7596f07a84b0838c226eb72478d1a09797f9a0ba8a36668c",
+      "bytes": 878
+    },
+    {
+      "path": "util/hdmap/SampleGetParkingSpaceList.h",
+      "sha256": "d1572cf9b7a4f6db92bc6e3be5b767c07b312b5f57c6d18c52f62928ae116231",
+      "bytes": 1927
+    },
+    {
+      "path": "util/hdmap/SampleGetPredefinedRoute.h",
+      "sha256": "e07bb8f5ff8d43eb5e4076e78df94a53683ffb198343f42512cd15edd047ecc9",
+      "bytes": 592
+    },
+    {
+      "path": "util/hdmap/SampleGetRoadMark.h",
+      "sha256": "3fd19821117e8fa19f4b2a0987402d7cb158a7fceab6612cec806cc67f8decda",
+      "bytes": 1361
+    },
+    {
+      "path": "util/hdmap/SampleGetRoadST.h",
+      "sha256": "18f3442960dffd7d57c5b1d0d235b4f0a58f3039f0a476c9ad9a63758f114c57",
+      "bytes": 613
+    },
+    {
+      "path": "util/hdmap/SampleGetStoplineList.h",
+      "sha256": "df965a4c3f067f033cfd62b2efc2a51b60f8f54ff69b520c7103b00e54958e59",
+      "bytes": 1208
+    },
+    {
+      "path": "util/hdmap/SampleGetTrafficLightList.h",
+      "sha256": "1195ff8fb538a86dd6c33e44248603fe08a74966d96e221954e7a3952724caab",
+      "bytes": 1541
+    },
+    {
+      "path": "util/hdmap/SampleGetTrafficSignList.h",
+      "sha256": "fd797afde505bb2db807284783d2cd9ed40009586102e90be3c733b255ecd91a",
+      "bytes": 1519
+    },
+    {
+      "path": "util/hdmap/SampleNavigate.h",
+      "sha256": "a3544710dd974cd02fa2fed96f3f99a0d95f133849d9a961bcdca84f37fb8808",
+      "bytes": 717
+    }
+  ]
+}

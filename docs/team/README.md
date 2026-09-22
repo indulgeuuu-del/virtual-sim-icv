@@ -38,13 +38,11 @@ py -3.10 tools/check_driving_environment.py --sdk-root $simoneSdk
 
 核对 `sdk_supplied=true` 和 `sdk_missing_files`，然后按[官方开发说明](https://simone-docs.51sim.com/20_Developer_Manual/01_Developer_Quick_Start/index.html)运行配套例程。文件齐全不代表版本、授权或运行兼容。
 
-交接工程的CMakeLists依赖SDK上层工程、头文件和链接库，不能直接作为独立工程构建。首次打通后，将实际验证过的编译、启动和结束命令随开发模块提供，构建输出放在源码目录之外。完整比赛构建的当前状态见开发进度。
+`competition/`沿用的CMakeLists依赖SDK上层工程、头文件和链接库，不能直接作为独立工程构建。首次打通后，将实际验证过的编译、启动和结束命令随开发模块提供，构建输出放在源码目录之外。完整比赛构建的当前状态见开发进度。
 
 ## 定位开发入口
 
-基线目录：
-
-`code_pre/2025 智能网联汽车-曾熙桐/代码工程/【20250725.8 Traj】last version/`
+共同开发目录：`competition/`。以下入口均相对于该目录：
 
 | 模块 | 阅读入口 | 职责 |
 | --- | --- | --- |
@@ -52,7 +50,15 @@ py -3.10 tools/check_driving_environment.py --sdk-root $simoneSdk
 | AVP | `AVP/src/main.cpp` | 自动泊车流程 |
 | util | `util/` | 地图、路径和控制等公共工具 |
 
-首次实质开发从该基线建立独立开发副本，复制需要的源码、配置和第三方声明，记录源路径及原始文件哈希，并在开发进度登记入口。其他队员沿用同一开发副本，避免各自另建版本。保留code_pre原件，不带入历史缓存或编译产物；源码混合UTF-8与GB18030，编辑前确认目标编码。
+所有队员在同一开发副本修改，不另建个人版本目录。`competition/baseline.json`记录基线提交、源路径、原始文件大小与SHA-256，供追溯比较；其中哈希描述复制时的原件，不要求修改后的文件仍与它相同。保留code_pre原件和第三方声明。源码混合UTF-8与GB18030，编辑前确认目标编码；本轮修改的main_manual.cpp采用UTF-8 BOM，方便MSVC识别。
+
+不需要平台即可运行策略循环回归测试，操作和数据流解释见[模块说明](../../competition/README.md)：
+
+```powershell
+py -3.10 tools/test_competition_manual.py
+```
+
+期望退出码0、总结果`passed=true`，每个用例均为`PASS`。这只验证策略循环的离线行为，不构建完整SDK工程。
 
 ## 按本届规则实现功能
 
