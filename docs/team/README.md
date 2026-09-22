@@ -52,7 +52,7 @@ py -3.10 tools/check_driving_environment.py --sdk-root $simoneSdk
 
 所有队员在同一开发副本修改，不另建个人版本目录。`competition/baseline.json`记录基线提交、源路径、原始文件大小与SHA-256，供追溯比较；其中哈希描述复制时的原件，不要求修改后的文件仍与它相同。保留code_pre原件和第三方声明。源码混合UTF-8与GB18030，编辑前确认目标编码；本轮修改的main_manual.cpp采用UTF-8 BOM，方便MSVC识别。
 
-不需要平台即可运行策略循环回归测试，操作和数据流解释见[模块说明](../../competition/README.md)：
+不需要平台即可运行策略循环回归测试。在仓库根目录执行：
 
 ```powershell
 py -3.10 tools/test_competition_manual.py
