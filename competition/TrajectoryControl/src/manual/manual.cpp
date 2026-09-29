@@ -1,4 +1,7 @@
+ï»¿#include <cmath>
+#include <fstream>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <regex>
 #include <vector>
@@ -7,6 +10,87 @@
 #include "define.h"
 #include "utility.h"
 #include "manual.h"
+
+/* ç­–ç•¥ç‚¹æ¯è¡Œå›ºå®š 7 åˆ—ï¼Œåˆ—åç”¨äºæŠ¥é”™å®šä½ */
+static const char* const STRATEGY_COLUMNS[] = { "id", "x", "y", "pathMode", "stopTime", "speed", "kp" };
+
+/* å–æ•´å‹åˆ—ï¼šå¿…é¡»æ˜¯ JSON æ•´æ•°ï¼ˆ1.5ã€"1"ã€null éƒ½æ‹’ç»ï¼‰ï¼Œä¸”åœ¨ int èŒƒå›´å†… */
+static bool readStrategyInt(const nlohmann::json& value, int& out)
+{
+    if (!value.is_number_integer()) return false;
+    if (value.is_number_unsigned())
+    {
+        if (value.get<unsigned long long>() > static_cast<unsigned long long>(std::numeric_limits<int>::max())) return false;
+    }
+    else
+    {
+        long long v = value.get<long long>();
+        if (v < std::numeric_limits<int>::min() || v > std::numeric_limits<int>::max()) return false;
+    }
+    out = value.get<int>();
+    return true;
+}
+
+/* å–æ•°å€¼åˆ—ï¼šå¿…é¡»æ˜¯æœ‰é™æ•°å­—ï¼ˆå­—ç¬¦ä¸²ã€å¸ƒå°”ã€null éƒ½æ‹’ç»ï¼‰ */
+static bool readStrategyNumber(const nlohmann::json& value, double& out)
+{
+    if (!value.is_number()) return false;
+    out = value.get<double>();
+    return std::isfinite(out);
+}
+
+/* æ ¡éªŒæ•´ä¸ª strategy æ•°ç»„ï¼›ä»»ä¸€è¡Œä¸åˆæ³•åˆ™è¿”å› falseï¼Œerror è¯´æ˜ç¬¬å‡ è¡Œã€ç¬¬å‡ åˆ— */
+static bool parseStrategyRows(const nlohmann::json& jsonData, std::vector<StrategyPoint>& points, std::string& error)
+{
+    if (!jsonData.is_object() || !jsonData.contains("strategy") || !jsonData.at("strategy").is_array())
+    {
+        error = "ç¼ºå°‘ strategy æ•°ç»„";
+        return false;
+    }
+    const nlohmann::json& rows = jsonData.at("strategy");
+    if (rows.empty())
+    {
+        error = "strategy æ•°ç»„ä¸ºç©º";
+        return false;
+    }
+
+    for (size_t i = 0; i < rows.size(); ++i)
+    {
+        const nlohmann::json& arr = rows.at(i);
+        std::string where = "strategy[" + std::to_string(i) + "]";
+        if (!arr.is_array() || arr.size() != 7)
+        {
+            error = where + " åº”ä¸ºæ°å¥½ 7 åˆ—çš„æ•°ç»„ [id, x, y, pathMode, stopTime, speed, kp]";
+            return false;
+        }
+        auto columnError = [&](size_t col, const std::string& expect) {
+            error = where + " ç¬¬ " + std::to_string(col + 1) + " åˆ— " + STRATEGY_COLUMNS[col] + " " + expect;
+            return false;
+        };
+
+        int id = 0;
+        if (!readStrategyInt(arr.at(0), id) || id != static_cast<int>(i)) return columnError(0, "åº”ä¸ºæ•´æ•°ä¸”ç­‰äºè¡Œå· " + std::to_string(i));
+
+        StrategyPoint pt;
+        double x = 0.0, y = 0.0;
+        if (!readStrategyNumber(arr.at(1), x)) return columnError(1, "åº”ä¸ºæœ‰é™æ•°å­—");
+        if (!readStrategyNumber(arr.at(2), y)) return columnError(2, "åº”ä¸ºæœ‰é™æ•°å­—");
+        pt.Pos = SSD::SimPoint3D(x, y, 0.0);
+
+        /* -1ï¼šSDK è·¯å¾„è§„åˆ’ï¼ˆGenerateRouteï¼‰ï¼›1ï¼šä¸¤ç‚¹ç­‰è·æ’å€¼ï¼ˆequidistantSamplingï¼‰ */
+        if (!readStrategyInt(arr.at(3), pt.pathMode) || (pt.pathMode != -1 && pt.pathMode != 1)) return columnError(3, "åº”ä¸ºæ•´æ•° -1 æˆ– 1");
+
+        /* stopTime / speed / kpï¼š-1 è¡¨ç¤ºä½¿ç”¨é»˜è®¤å€¼ï¼Œå¦åˆ™å¿…é¡»å¤§äº 0 */
+        double* targets[] = { &pt.stopTime, &pt.speed, &pt.kp };
+        for (size_t col = 4; col < 7; ++col)
+        {
+            double& v = *targets[col - 4];
+            if (!readStrategyNumber(arr.at(col), v) || (v != -1.0 && v <= 0.0)) return columnError(col, "åº”ä¸º -1ï¼ˆé»˜è®¤ï¼‰æˆ–å¤§äº 0 çš„æ•°");
+        }
+        points.push_back(pt);
+    }
+    return true;
+}
 
 bool loadStrategyPoints(int &caseIdx, std::vector<StrategyPoint>& strategyPoint)
 {
@@ -18,44 +102,43 @@ bool loadStrategyPoints(int &caseIdx, std::vector<StrategyPoint>& strategyPoint)
             ]
         }
 
-        | Ë÷Òı | º¬Òå              | ÀàĞÍ   |
+        | ç´¢å¼• | å«ä¹‰              | ç±»å‹   |
         |  --  | ----------------- | ------ |
-        |  0   | µã ID             | ÕûĞÍ   |
-        |  1   | X ×ø±ê            | ¸¡µãĞÍ |
-        |  2   | Y ×ø±ê            | ¸¡µãĞÍ |
-        |  3   | pathMode Â·¾¶Ä£Ê½ | ÕûĞÍ   |
-        |  4   | stopTime Í£³µÊ±¼ä | ¸¡µãĞÍ |
-        |  5   | speed ËÙ¶È        | ¸¡µãĞÍ |
-        |  6   | kp ¿ØÖÆ²ÎÊı       | ¸¡µãĞÍ |
+        |  0   | ç‚¹ ID             | æ•´å‹   |
+        |  1   | X åæ ‡            | æµ®ç‚¹å‹ |
+        |  2   | Y åæ ‡            | æµ®ç‚¹å‹ |
+        |  3   | pathMode è·¯å¾„æ¨¡å¼ | æ•´å‹   |
+        |  4   | stopTime åœè½¦æ—¶é—´ | æµ®ç‚¹å‹ |
+        |  5   | speed é€Ÿåº¦        | æµ®ç‚¹å‹ |
+        |  6   | kp æ§åˆ¶å‚æ•°       | æµ®ç‚¹å‹ |
     ***********************************************************/
     std::string filePath = SIMONE_ADAS_DIR + "TrajectoryControl/m_strategy/"+ std::to_string(caseIdx) + ".stg";
     std::ifstream file = std::ifstream(filePath);
-    if (!file) return false; // ´ú±íµ±Ç°°¸ÀıÎŞ¶ÔÓ¦²ßÂÔµãÎÄ¼ş
+    if (!file) return false; // ä»£è¡¨å½“å‰æ¡ˆä¾‹æ— å¯¹åº”ç­–ç•¥ç‚¹æ–‡ä»¶
+
+    /* æ–‡ä»¶å­˜åœ¨ä½†å†…å®¹æ— æ•ˆæ—¶æ•´ä»½æ‹’ç»ï¼šä¸å¯ç”¨ç­–ç•¥ç‚¹æ¨¡å¼ï¼Œå¹¶è¯´æ˜ç¬¬å‡ è¡Œã€ç¬¬å‡ åˆ—å‡ºé”™ */
+    auto reject = [&filePath](const std::string& reason) {
+        globalLogger(Logger::Color::BrightMagenta) << "â—† ç­–ç•¥ç‚¹æ–‡ä»¶â€œ" << filePath << "â€æ— æ•ˆï¼Œæœªå¯ç”¨ç­–ç•¥ç‚¹æ¨¡å¼ï¼š" << reason;
+        return false;
+    };
 
     nlohmann::json jsonData;
-    file >> jsonData;
+    try
+    {
+        jsonData = nlohmann::json::parse(file);
+    }
+    catch (const nlohmann::json::exception& e)
+    {
+        return reject(std::string("JSON æ ¼å¼é”™è¯¯ï¼Œ") + e.what());
+    }
     file.close();
-    if (!jsonData.contains("strategy") || !jsonData["strategy"].is_array()) 
-    {
-        globalLogger(Logger::Color::BrightMagenta) << "¡ô ²ßÂÔµãÎÄ¼ş¡°" << filePath << "¡±ÖĞº¬ÓĞÎŞĞ§µÄ²ßÂÔÊı¾İ¸ñÊ½£¬Çë¼ì²é²ßÂÔµãÎÄ¼ş";
-        return false;
-    }
 
-    for (const auto& arr : jsonData["strategy"])
-    {
-        if (arr.is_array() && arr.size() >= 6)
-        {
-            StrategyPoint pt;
-            pt.Pos = SSD::SimPoint3D(arr[1].get<double>(), arr[2].get<double>(), 0.0);
-            pt.pathMode = arr[3].get<int>();
-            pt.stopTime = arr[4].get<double>();
-            pt.speed = arr[5].get<double>();
-            pt.kp = arr[6].get<double>();
-            strategyPoint.push_back(pt);
-        }
-    }
+    std::vector<StrategyPoint> parsed;
+    std::string error;
+    if (!parseStrategyRows(jsonData, parsed, error)) return reject(error);
 
-    globalLogger(Logger::Color::BrightCyan) << "¡ù ÆôÓÃ²ßÂÔµãÄ£Ê½";
+    strategyPoint = std::move(parsed); // å…¨éƒ¨æ ¡éªŒé€šè¿‡åæ‰æ›¿æ¢ï¼Œå¤±è´¥æ—¶ä¸ç•™ä¸‹åŠä»½æ•°æ®
+    globalLogger(Logger::Color::BrightCyan) << "â€» å¯ç”¨ç­–ç•¥ç‚¹æ¨¡å¼ï¼Œå…± " << strategyPoint.size() << " ä¸ªç­–ç•¥ç‚¹";
     return true;
 }
 
@@ -75,8 +158,8 @@ void parseStopLines(const nlohmann::json& jsonData, std::vector<ManualStopLineRe
 
             ManualStopLineReservoir stopLine = {
                 caseIndex,
-                SSD::SimPoint3D(line[0], line[1], 0.0f), // srcPos (z Ä¬ÈÏÎª 0)
-                SSD::SimPoint3D(line[2], line[3], 0.0f), // dstPos (z Ä¬ÈÏÎª 0)
+                SSD::SimPoint3D(line[0], line[1], 0.0f), // srcPos (z é»˜è®¤ä¸º 0)
+                SSD::SimPoint3D(line[2], line[3], 0.0f), // dstPos (z é»˜è®¤ä¸º 0)
                 line[4],                  // command
                 line[5],                  // srcFrame
                 line[6]                   // dstFrame
@@ -86,24 +169,24 @@ void parseStopLines(const nlohmann::json& jsonData, std::vector<ManualStopLineRe
     }
 }
 
-// ½âÎö JSON ²¢·µ»Ø×ªÏòµÆ×´Ì¬
+// è§£æ JSON å¹¶è¿”å›è½¬å‘ç¯çŠ¶æ€
 ESimOne_Signal_Light parseManualLight(const nlohmann::json& jsonData) {
-    // ¼ì²é JSON ÊÇ·ñ°üº¬ manualLight ×Ö¶Î
+    // æ£€æŸ¥ JSON æ˜¯å¦åŒ…å« manualLight å­—æ®µ
     if (!jsonData.contains("manualLight") || !jsonData["manualLight"].is_object()) {
         return ESimOne_Signal_Light_None;
     }
 
-    // »ñÈ¡ manualLight ¶ÔÏó
+    // è·å– manualLight å¯¹è±¡
     const auto& manualLight = jsonData["manualLight"];
 
-    // ½« caseIdx ×ª»»Îª×Ö·û´®¸ñÊ½£¨JSON ¼üÊÇ×Ö·û´®£©
+    // å°† caseIdx è½¬æ¢ä¸ºå­—ç¬¦ä¸²æ ¼å¼ï¼ˆJSON é”®æ˜¯å­—ç¬¦ä¸²ï¼‰
     std::string caseIdxStr = std::to_string(caseIdx);
 
-    // ²éÕÒÊÇ·ñ´æÔÚµ±Ç°°¸ÀıË÷Òı¶ÔÓ¦µÄ¼ü
+    // æŸ¥æ‰¾æ˜¯å¦å­˜åœ¨å½“å‰æ¡ˆä¾‹ç´¢å¼•å¯¹åº”çš„é”®
     if (manualLight.contains(caseIdxStr)) {
         int lightValue = manualLight[caseIdxStr];
 
-        // ¸ù¾İÖµ 1 / 2 ·µ»Ø¶ÔÓ¦µÄ×ªÏòµÆÃ¶¾Ù
+        // æ ¹æ®å€¼ 1 / 2 è¿”å›å¯¹åº”çš„è½¬å‘ç¯æšä¸¾
         if (lightValue == 1) {
             return ESimOne_Signal_Light_LeftBlinker;
         }
@@ -112,7 +195,7 @@ ESimOne_Signal_Light parseManualLight(const nlohmann::json& jsonData) {
         }
     }
 
-    // Ä¬ÈÏ·µ»ØÎŞ×ªÏòµÆ
+    // é»˜è®¤è¿”å›æ— è½¬å‘ç¯
     return ESimOne_Signal_Light_None;
 }
 
@@ -136,7 +219,7 @@ std::vector<std::tuple<SSD::SimPoint3D, SSD::SimPoint3D>> parseSlide(const std::
     for (auto it = std::sregex_iterator(inputStr.begin(), inputStr.end(), pattern); it != std::sregex_iterator(); ++it)
     {
         const std::smatch& match = *it;
-        if (caseId != std::stoi(match[1])) continue; // Ö»É¸Ñ¡³ö¸úµ±Ç°°¸ÀıÏà¹ØµÄÁï³µ¹æÔò
+        if (caseId != std::stoi(match[1])) continue; // åªç­›é€‰å‡ºè·Ÿå½“å‰æ¡ˆä¾‹ç›¸å…³çš„æºœè½¦è§„åˆ™
         float x1 = std::stof(match[2]);
         float y1 = std::stof(match[3]);
         float x2 = std::stof(match[4]);

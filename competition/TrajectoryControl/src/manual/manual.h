@@ -1,13 +1,13 @@
-#pragma once
+ï»¿#pragma once
 #include "SSD/SimPoint3D.h"
 #include "Service/SimOneIOStruct.h"
 #include "json.hpp"
 
-/* ¹¦ÄÜ¿ª¹Ø */
+/* åŠŸèƒ½å¼€å…³ */
 class FeatureSwitcher {
 public:
-	bool state; // ±¾°¸ÀıµÄ¿ª¹Ø×´Ì¬
-	std::vector<int> caseList; // ÅäÖÃ°¸ÀıÁĞ±í
+	bool state; // æœ¬æ¡ˆä¾‹çš„å¼€å…³çŠ¶æ€
+	std::vector<int> caseList; // é…ç½®æ¡ˆä¾‹åˆ—è¡¨
 	FeatureSwitcher() : state(true), caseList() {}
 	void load(const nlohmann::json& jsonData, const std::string& feature, const int caseIdx);
 };
@@ -36,12 +36,12 @@ bool loadStrategyPoints(int &caseIdx, std::vector<StrategyPoint>& strategyPoint)
 
 extern void parseStopLines(const nlohmann::json& jsonData, std::vector<ManualStopLineReservoir>& stopLines);
 
-// ½âÎö JSON ²¢·µ»Ø×ªÏòµÆ×´Ì¬
+// è§£æ JSON å¹¶è¿”å›è½¬å‘ç¯çŠ¶æ€
 extern ESimOne_Signal_Light parseManualLight(const nlohmann::json& jsonData);
 
 /**
- * ½âÎöĞÎÈç "41:(10.25,20.35)->(20.65,25.55)" µÄ»¬ÒÆ¶ÎÃèÊö´®
- * @param inputStr ÊäÈë×Ö·û´®£¬¿É°üº¬¶à¸öÆ¬¶Î
- * @return ÓÉ (id, beginPoint, endPoint) ×é³ÉµÄ½á¹ûÏòÁ¿
+ * è§£æå½¢å¦‚ "41:(10.25,20.35)->(20.65,25.55)" çš„æ»‘ç§»æ®µæè¿°ä¸²
+ * @param inputStr è¾“å…¥å­—ç¬¦ä¸²ï¼Œå¯åŒ…å«å¤šä¸ªç‰‡æ®µ
+ * @return ç”± (id, beginPoint, endPoint) ç»„æˆçš„ç»“æœå‘é‡
  */
 extern std::vector<std::tuple<SSD::SimPoint3D, SSD::SimPoint3D>> parseSlide(const std::string& inputStr, int caseId);

@@ -8,8 +8,40 @@ int main_manual(void)
 		return 1;
 	}
 	int currentIdx = 0;
-	bool firstPointPending = true;
+	int pendingIdx = 0; // 尚未建成路径的目标点编号，-1 表示无；首帧先建立到第 0 个点的路径
+	targetPath.clear(); // 本模式不沿用其他模式或上次运行的旧路径
 	timer.tic(); // 开始计时
+
+	/* 生成从主车到第 idx 个点的路径；先写入局部路径，成功后才替换 targetPath */
+	auto buildPathTo = [](size_t idx) {
+		initialPath.clear(); // 更新起点和终点
+		validWayPoints.clear();
+		initialPath.push_back(mainVehicle.pt);
+		initialPath.push_back(strategyPoint[idx].Pos);
+
+		SSD::SimPoint3DVector newPath;
+		bool ok = false;
+		/* 根据策略点的 pathMode 决定用 A* 还是插值 */
+		if (strategyPoint[idx].pathMode == -1)
+		{
+			ok = SimOneAPI::GenerateRoute(initialPath, validWayPoints, newPath);
+			if (!ok) globalLogger(Logger::Color::BrightMagenta) << "◆ 使用 A* 算法生成路径失败";
+		}
+		else if (strategyPoint[idx].pathMode == 1)
+		{
+			ok = equidistantSampling(initialPath, newPath, 0.2); // 成功返回 true
+			if (!ok) globalLogger(Logger::Color::BrightMagenta) << "◆ 使用插值生成轨迹失败";
+		}
+		else globalLogger(Logger::Color::BrightMagenta) << "◆ 未知的 pathMode：" << strategyPoint[idx].pathMode;
+
+		if (ok && newPath.size() < 2) // 少于两个点无法循迹
+		{
+			ok = false;
+			globalLogger(Logger::Color::BrightMagenta) << "◆ 生成的路径点少于 2 个";
+		}
+		if (ok) targetPath = newPath;
+		return ok;
+	};
 
 	double stopTime;
 	bool isStopping = false;
@@ -39,9 +71,7 @@ int main_manual(void)
 		static bool notUpdateNextPt = false;
 		float distNextPoint = 0.0f; // 到下一个循迹点之间的 ST 距离
 
-		/* 首帧先建立到第一个点的路径，不能因距离接近而直接跳过它。 */
-		if (firstPointPending) distNextPoint = std::numeric_limits<float>::max();
-		else distNextPoint = getDistS(mainVehicle.pt, strategyPoint[currentIdx].Pos); // 到下一个循迹点之间的 ST 距离
+		distNextPoint = getDistS(mainVehicle.pt, strategyPoint[currentIdx].Pos); // 到下一个循迹点之间的 ST 距离
 
 		/* 如果 [dat1] == -1，[dat2] = defaut，否则 [dat2] = [dat1] */
 #define JudgeJsonData(DATA1, DATA2, DATA3) if (strategyPoint[currentIdx].DATA1 == -1) DATA2 = DATA3; else DATA2 = strategyPoint[currentIdx].DATA1
@@ -90,55 +120,32 @@ int main_manual(void)
 			}
 		}
 
-		/* 第一次进入循迹逻辑，初始化起点、终点并生成路径 */
-		if (firstPointPending && !notUpdateNextPt) // 刚开始循迹的时候
+		/* 若当前点已接近目标点（≤5m），且后续还有点，准备切换到下一个循迹点 */
+		/* 还要求停止的过程中不允许切换到下一个点；首帧的 pendingIdx 已是 0，不会跳过第一个点 */
+		if (pendingIdx < 0 && distNextPoint <= achieveThres && currentIdx + 1 < strategyPoint.size() && !notUpdateNextPt && !isStopping)
 		{
-			firstPointPending = false;
-			initialPath.clear(); // 更新起点和终点
-			targetPath.clear(); // 清空旧路径
-			validWayPoints.clear();
-
-			initialPath.push_back(mainVehicle.pt);
-			initialPath.push_back(strategyPoint[0].Pos);
-
-			/* 根据策略点的 pathMode 决定用 A* 还是插值 */
-			if (strategyPoint[0].pathMode == -1 && !SimOneAPI::GenerateRoute(initialPath, validWayPoints, targetPath)) // 生成到第一个循迹点的路径
-			{
-				globalLogger(Logger::Color::BrightMagenta) << "◆ 使用 A* 算法生成路径失败";
-			}
-			else if (strategyPoint[0].pathMode == 1 && equidistantSampling(initialPath, targetPath, 0.2))
-			{
-				globalLogger(Logger::Color::BrightMagenta) << "◆ 使用插值生成轨迹失败";
-			}
-			else
-			{
-				globalLogger(Logger::Color::BrightGreen) << "※ 切换到下一个循迹点，下一个循迹点的编号：" << currentIdx;
-			}
+			pendingIdx = currentIdx + 1;
 		}
-		/* 若当前点已接近目标点（≤5m），且后续还有点，切换到下一个循迹点，重新生成路径 */
-		/* 还要求停止的过程中不允许切换到下一个点 */
-		else if (distNextPoint <= achieveThres && currentIdx + 1 < strategyPoint.size() && !notUpdateNextPt && !isStopping)
+
+		/* 建立到待切换点的路径：成功才切换编号；失败保持原编号并停车，下一帧重试 */
+		if (pendingIdx >= 0 && !notUpdateNextPt)
 		{
-			++currentIdx; // 切换到下一个循迹点
-			initialPath.clear(); // 更新起点和终点
-			targetPath.clear(); // 清空旧路径
-			validWayPoints.clear();
-
-			initialPath.push_back(mainVehicle.pt);
-			initialPath.push_back(strategyPoint[currentIdx].Pos);
-
-			/* 根据策略点的 pathMode 决定用 A* 还是插值 */
-			if (strategyPoint[currentIdx].pathMode == -1 && !SimOneAPI::GenerateRoute(initialPath, validWayPoints, targetPath)) // 生成到第一个循迹点的路径
+			if (buildPathTo(pendingIdx))
 			{
-				globalLogger(Logger::Color::BrightMagenta) << "◆ 使用 A* 算法生成路径失败";
-			}
-			else if (strategyPoint[currentIdx].pathMode == 1 && equidistantSampling(initialPath, targetPath, 0.2))
-			{
-				globalLogger(Logger::Color::BrightMagenta) << "◆ 使用插值生成轨迹失败";
+				bool switched = pendingIdx != currentIdx;
+				currentIdx = pendingIdx;
+				pendingIdx = -1;
+				globalLogger(Logger::Color::BrightGreen) << "※ 切换到下一个循迹点，下一个循迹点的编号：" << currentIdx;
+				if (switched) // 切点当帧就使用新点的速度和转向参数
+				{
+					JudgeJsonData(kp, steerKpUse, steerKp);
+					JudgeJsonData(speed, pControl->throttle, caseTargetSpeed);
+				}
 			}
 			else
 			{
-				globalLogger(Logger::Color::BrightGreen) << "※ 切换到下一个循迹点，下一个循迹点的编号：" << currentIdx;
+				pControl->throttle = 0; // 没有到目标点的路径，停车等待重试
+				globalLogger(Logger::Color::BrightMagenta) << "◆ 到第 " << pendingIdx << " 个循迹点的路径未建立，停车并在下一帧重试";
 			}
 		}
 
@@ -151,7 +158,14 @@ int main_manual(void)
 		LOG << "\t△ 使用的 PID 参数：P = " << ((strategyPoint[currentIdx].kp == -1) ? "默认" : std::to_string(strategyPoint[currentIdx].kp));
 		LOG << "\t△ 距离下一个循迹点的距离为：" << distNextPoint;
 		LOG << "\t△ 主车坐标为：（" << mainVehicle.pt.x << "，" << mainVehicle.pt.y << "）";
-		mainVehicle.drive();
+		if (targetPath.size() < 2) // 第一个点的路径尚未建成：纯追踪无路径可跟，直接下发停车指令
+		{
+			pControl->throttle = 0;
+			pControl->steering = 0;
+			pControl->gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
+			SimOneAPI::SetDrive(mainVehicle.id, pControl.get());
+		}
+		else mainVehicle.drive();
 		SimOneAPI::NextFrame(frame);
 	}
 
