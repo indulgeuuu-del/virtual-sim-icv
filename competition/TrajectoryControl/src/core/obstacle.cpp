@@ -1,4 +1,4 @@
-#include <set>
+ï»¿#include <set>
 #include <unordered_set>
 #include "UtilMath.h"
 #include "define.h"
@@ -8,31 +8,31 @@
 #include "controller.hpp"
 #include "prediction.h"
 
-SSD::SimPoint3D calculateObstacleTL(const SimOne_Data_Obstacle_Entry& obstacle) // ×óÉÏ
+SSD::SimPoint3D calculateObstacleTL(const SimOne_Data_Obstacle_Entry& obstacle) // å·¦ä¸Š
 {
     float halfWidth = 0.5f * obstacle.width;
     float halfLength = 0.5f * obstacle.length;
     float azimuth = mainVehicle.laneAzimuth;
 
-    if ((0 <= azimuth && azimuth <= 45) || (315 < azimuth && azimuth <= 360)) // Ö÷³µÏò¶«ÔË¶¯£¬µÀÂ·ÊÇ¶«Î÷·½ÏòµÄ
+    if ((0 <= azimuth && azimuth <= 45) || (315 < azimuth && azimuth <= 360)) // ä¸»è½¦å‘ä¸œè¿åŠ¨ï¼Œé“è·¯æ˜¯ä¸œè¥¿æ–¹å‘çš„
     {
         return SSD::SimPoint3D(obstacle.posX + halfLength, obstacle.posY + halfWidth, obstacle.posZ);
     }
-    else if (135 < azimuth && azimuth <= 225) // Ö÷³µÏòÎ÷ÔË¶¯£¬µÀÂ·ÊÇ¶«Î÷·½ÏòµÄ
+    else if (135 < azimuth && azimuth <= 225) // ä¸»è½¦å‘è¥¿è¿åŠ¨ï¼Œé“è·¯æ˜¯ä¸œè¥¿æ–¹å‘çš„
     {
         return SSD::SimPoint3D(obstacle.posX - halfLength, obstacle.posY - halfWidth, obstacle.posZ);
     }
-    else if (45 < azimuth && azimuth <= 135) // Ö÷³µÏò±±ÔË¶¯£¬µÀÂ·ÊÇÄÏ±±·½ÏòµÄ
+    else if (45 < azimuth && azimuth <= 135) // ä¸»è½¦å‘åŒ—è¿åŠ¨ï¼Œé“è·¯æ˜¯å—åŒ—æ–¹å‘çš„
     {
         return SSD::SimPoint3D(obstacle.posX - halfWidth, obstacle.posY + halfLength, obstacle.posZ);
     }
-    else // (225 < azimuth && azimuth <= 315) // Ö÷³µÏòÄÏÔË¶¯£¬µÀÂ·ÊÇÄÏ±±·½ÏòµÄ
+    else // (225 < azimuth && azimuth <= 315) // ä¸»è½¦å‘å—è¿åŠ¨ï¼Œé“è·¯æ˜¯å—åŒ—æ–¹å‘çš„
     {
         return SSD::SimPoint3D(obstacle.posX + halfWidth, obstacle.posY - halfLength, obstacle.posZ);
     }
 }
 
-SSD::SimPoint3D calculateObstacleTR(const SimOne_Data_Obstacle_Entry& obstacle) // ÓÒÉÏ
+SSD::SimPoint3D calculateObstacleTR(const SimOne_Data_Obstacle_Entry& obstacle) // å³ä¸Š
 {
     float halfWidth = 0.5f * obstacle.width;
     float halfLength = 0.5f * obstacle.length;
@@ -56,7 +56,7 @@ SSD::SimPoint3D calculateObstacleTR(const SimOne_Data_Obstacle_Entry& obstacle) 
     }
 }
 
-SSD::SimPoint3D calculateObstacleBL(const SimOne_Data_Obstacle_Entry& obstacle) // ×óÏÂ
+SSD::SimPoint3D calculateObstacleBL(const SimOne_Data_Obstacle_Entry& obstacle) // å·¦ä¸‹
 {
     float halfWidth = 0.5f * obstacle.width;
     float halfLength = 0.5f * obstacle.length;
@@ -80,7 +80,7 @@ SSD::SimPoint3D calculateObstacleBL(const SimOne_Data_Obstacle_Entry& obstacle) 
     }
 }
 
-SSD::SimPoint3D calculateObstacleBR(const SimOne_Data_Obstacle_Entry& obstacle) // ÓÒÏÂ
+SSD::SimPoint3D calculateObstacleBR(const SimOne_Data_Obstacle_Entry& obstacle) // å³ä¸‹
 {
     float halfWidth = 0.5f * obstacle.width;
     float halfLength = 0.5f * obstacle.length;
@@ -110,7 +110,7 @@ void groupObstacleByDist(const std::vector<size_t>& indexList, float threshold, 
     size_t n = indexList.size();
     std::vector<std::vector<size_t>> adjacencyList(n);
 
-    // ¹¹½¨ÁÚ½Ó¾ØÕó
+    // æ„å»ºé‚»æ¥çŸ©é˜µ
     for (size_t i = 0; i < n; ++i)
     {
         for (size_t j = i + 1; j < n; ++j)
@@ -129,7 +129,7 @@ void groupObstacleByDist(const std::vector<size_t>& indexList, float threshold, 
         }
     }
 
-    // Ê¹ÓÃ Lambda ½øĞĞÉî¶ÈÓÅÏÈËÑË÷ (DFS)
+    // ä½¿ç”¨ Lambda è¿›è¡Œæ·±åº¦ä¼˜å…ˆæœç´¢ (DFS)
     std::unordered_set<size_t> visited;
     auto graphDFS = [&](size_t index, auto& graphDFSRef, std::vector<size_t>& group) -> void {
         visited.insert(index);
@@ -142,7 +142,7 @@ void groupObstacleByDist(const std::vector<size_t>& indexList, float threshold, 
         }
         };
 
-    // ±éÀúËùÓĞ½Úµã
+    // éå†æ‰€æœ‰èŠ‚ç‚¹
     for (size_t i = 0; i < n; ++i)
     {
         if (visited.find(i) == visited.end())
@@ -150,7 +150,7 @@ void groupObstacleByDist(const std::vector<size_t>& indexList, float threshold, 
             std::vector<size_t> group;
             graphDFS(i, graphDFS, group);
 
-            // ½« group ÀïµÄË÷Òı×ª»»³ÉÔ­Ê¼Ë÷Òı
+            // å°† group é‡Œçš„ç´¢å¼•è½¬æ¢æˆåŸå§‹ç´¢å¼•
             for (size_t& idx : group) idx = indexList[idx];
             groups.push_back(group);
         }
@@ -163,7 +163,7 @@ void groupObstacleByS(const std::vector<Obstacle>& obstacleList, const std::vect
     size_t n = indexList.size();
     std::vector<std::vector<size_t>> adjacencyList(n);
 
-    // ¹¹½¨ÁÚ½Ó¾ØÕó£º¸ù¾İ s ×ø±êÊÇ·ñÔÚãĞÖµÄÚ
+    // æ„å»ºé‚»æ¥çŸ©é˜µï¼šæ ¹æ® s åæ ‡æ˜¯å¦åœ¨é˜ˆå€¼å†…
     for (size_t i = 0; i < n; ++i)
     {
         for (size_t j = i + 1; j < n; ++j)
@@ -180,7 +180,7 @@ void groupObstacleByS(const std::vector<Obstacle>& obstacleList, const std::vect
         }
     }
 
-    // Éî¶ÈÓÅÏÈËÑË÷ (DFS)
+    // æ·±åº¦ä¼˜å…ˆæœç´¢ (DFS)
     std::unordered_set<size_t> visited;
     auto graphDFS = [&](size_t index, auto& graphDFSRef, std::vector<size_t>& group) -> void {
         visited.insert(index);
@@ -193,7 +193,7 @@ void groupObstacleByS(const std::vector<Obstacle>& obstacleList, const std::vect
         }
         };
 
-    // ±éÀúËùÓĞ½Úµã£¬¹¹½¨·Ö×é
+    // éå†æ‰€æœ‰èŠ‚ç‚¹ï¼Œæ„å»ºåˆ†ç»„
     for (size_t i = 0; i < n; ++i)
     {
         if (visited.find(i) == visited.end())
@@ -201,7 +201,7 @@ void groupObstacleByS(const std::vector<Obstacle>& obstacleList, const std::vect
             std::vector<size_t> group;
             graphDFS(i, graphDFS, group);
 
-            // ½« group ÖĞµÄ¾Ö²¿Ë÷Òı×ªÎªÔ­Ê¼Ë÷Òı
+            // å°† group ä¸­çš„å±€éƒ¨ç´¢å¼•è½¬ä¸ºåŸå§‹ç´¢å¼•
             for (size_t& idx : group) idx = indexList[idx];
             groups.push_back(group);
         }
@@ -244,7 +244,7 @@ void getObstacleLaneSidePosition(const SSD::SimPoint3D& point, SSD::SimPoint3D& 
     rightPoint = rightLine[pointIndexR];
 }
 
-// ¿ÉÒÔÓÃ ST ×ø±êÀ´¼ÆËã¾àÀëÀ´ÓÅ»¯Õâ¸öº¯Êı
+// å¯ä»¥ç”¨ ST åæ ‡æ¥è®¡ç®—è·ç¦»æ¥ä¼˜åŒ–è¿™ä¸ªå‡½æ•°
 void getObstacleRoadSidePosition(const SSD::SimPoint3D& point, SSD::SimPoint3D& leftPoint, SSD::SimPoint3D& rightPoint)
 {
     SSD::SimString obstacleLaneId = m_SampleGetNearMostLane(point);
@@ -256,7 +256,7 @@ void getObstacleRoadSidePosition(const SSD::SimPoint3D& point, SSD::SimPoint3D& 
     double minDistTemp = std::numeric_limits<double>::max();
     int pointIndexTemp = midLine.size();
 
-    // ÕÒµ½¾àÀëÕÏ°­Îï×î½üµÄ³µµÀÖĞµãµÄË÷Òı
+    // æ‰¾åˆ°è·ç¦»éšœç¢ç‰©æœ€è¿‘çš„è½¦é“ä¸­ç‚¹çš„ç´¢å¼•
     for (size_t j = 0, je = midLine.size(); j < je; ++j)
     {
         double distTemp = UtilMath::planarDistance(midLine[j], point);
@@ -269,7 +269,7 @@ void getObstacleRoadSidePosition(const SSD::SimPoint3D& point, SSD::SimPoint3D& 
 
     std::set<SSD::SimString> visitedLanes;
 
-    // Lambda ±í´ïÊ½£ºµİ¹é²éÕÒ×î×ó/×îÓÒ²à³µµÀ
+    // Lambda è¡¨è¾¾å¼ï¼šé€’å½’æŸ¥æ‰¾æœ€å·¦/æœ€å³ä¾§è½¦é“
     auto findExtremeLane = [&](const SSD::SimString& laneId, bool findLeft, auto& findExtremeLaneRef) -> SSD::SimString {
         if (visitedLanes.count(laneId) > 0) return laneId;
         visitedLanes.insert(laneId);
@@ -284,17 +284,17 @@ void getObstacleRoadSidePosition(const SSD::SimPoint3D& point, SSD::SimPoint3D& 
         return laneId;
         };
 
-    // ²éÕÒ×î×óºÍ×îÓÒµÄ³µµÀ
+    // æŸ¥æ‰¾æœ€å·¦å’Œæœ€å³çš„è½¦é“
     SSD::SimString leftExtremeLane = findExtremeLane(obstacleLaneId, true, findExtremeLane);
     SSD::SimString rightExtremeLane = findExtremeLane(obstacleLaneId, false, findExtremeLane);
 
-    // »ñÈ¡×î×ó²à³µµÀµÄ×ó±ß½çµã
+    // è·å–æœ€å·¦ä¾§è½¦é“çš„å·¦è¾¹ç•Œç‚¹
     HDMapStandalone::MLaneInfo leftLaneInfo;
     if (SimOneAPI::GetLaneSample(leftExtremeLane, leftLaneInfo)) {
         leftPoint = leftLaneInfo.leftBoundary[pointIndexTemp];
     }
 
-    // »ñÈ¡×îÓÒ²à³µµÀµÄÓÒ±ß½çµã
+    // è·å–æœ€å³ä¾§è½¦é“çš„å³è¾¹ç•Œç‚¹
     HDMapStandalone::MLaneInfo rightLaneInfo;
     if (SimOneAPI::GetLaneSample(rightExtremeLane, rightLaneInfo)) {
         rightPoint = rightLaneInfo.rightBoundary[pointIndexTemp];
@@ -303,27 +303,27 @@ void getObstacleRoadSidePosition(const SSD::SimPoint3D& point, SSD::SimPoint3D& 
 
 bool isObstacleAmongCrosswalk(const SSD::SimPoint3D& tl, const SSD::SimPoint3D& tr, const SSD::SimPoint3D& bl, const SSD::SimPoint3D& br, const SSD::SimPoint3D& vertex1, const SSD::SimPoint3D& vertex2)
 {
-    // Lambda ±í´ïÊ½£ºÅĞ¶ÏÒ»¸öÊıÊÇ·ñÔÚÁ½¸öÊıÖ®¼ä£¨²»°üº¬±ß½ç£©
+    // Lambda è¡¨è¾¾å¼ï¼šåˆ¤æ–­ä¸€ä¸ªæ•°æ˜¯å¦åœ¨ä¸¤ä¸ªæ•°ä¹‹é—´ï¼ˆä¸åŒ…å«è¾¹ç•Œï¼‰
     auto isBetween = [](float val, float p1, float p2) {
         return (p1 < val && val < p2) || (p2 < val && val < p1);
         };
 
-    // Lambda ±í´ïÊ½£ºÅĞ¶ÏµãÊÇ·ñÔÚ¾ØĞÎÄÚ²¿
+    // Lambda è¡¨è¾¾å¼ï¼šåˆ¤æ–­ç‚¹æ˜¯å¦åœ¨çŸ©å½¢å†…éƒ¨
     auto inRectangle = [&](const SSD::SimPoint3D& pt) {
         return isBetween(pt.x, vertex1.x, vertex2.x) && isBetween(pt.y, vertex1.y, vertex2.y);
         };
 
-    // ¼ÆËã¾ØĞÎËÄÌõ±ßµÄÖĞµã
+    // è®¡ç®—çŸ©å½¢å››æ¡è¾¹çš„ä¸­ç‚¹
     SSD::SimPoint3D topMid((tl.x + tr.x) / 2, (tl.y + tr.y) / 2, (tl.z + tr.z) / 2);
     SSD::SimPoint3D bottomMid((bl.x + br.x) / 2, (bl.y + br.y) / 2, (bl.z + br.z) / 2);
     SSD::SimPoint3D leftMid((tl.x + bl.x) / 2, (tl.y + bl.y) / 2, (tl.z + bl.z) / 2);
     SSD::SimPoint3D rightMid((tr.x + br.x) / 2, (tr.y + br.y) / 2, (tr.z + br.z) / 2);
 
-    // ÅĞ¶ÏËÄ¸ö½ÇµãºÍËÄÌõ±ßµÄÖĞµãÊÇ·ñÔÚ¾ØĞÎÄÚ²¿
+    // åˆ¤æ–­å››ä¸ªè§’ç‚¹å’Œå››æ¡è¾¹çš„ä¸­ç‚¹æ˜¯å¦åœ¨çŸ©å½¢å†…éƒ¨
     return inRectangle(tl) || inRectangle(tr) || inRectangle(bl) || inRectangle(br) || inRectangle(topMid) || inRectangle(bottomMid) || inRectangle(leftMid) || inRectangle(rightMid);
 }
 
-// Í¨¹ı SimOne_Data_Obstacle_Entry À´¹¹Ôì
+// é€šè¿‡ SimOne_Data_Obstacle_Entry æ¥æ„é€ 
 Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle) : 
 	width(obstacle.width), length(obstacle.length), vx(obstacle.velX), vy(obstacle.velY), vz(obstacle.velZ), yaw(obstacle.oriZ), predictionPtr(std::make_shared<Prediction>(obstacle.prediction))
 {
@@ -338,8 +338,8 @@ Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle) :
 	isSameLaneWithMainVehicle = (laneID == mainVehicle.laneID);
 	isSameRoadWithMainVehicle = isSameRoadId(laneID, mainVehicle.laneID);
 
-    /* ¼ÆËãÏà¶ÔÓÚÖ÷³µµÄ ST ×ø±ê */
-    if (isSameRoadWithMainVehicle) // ÓëÖ÷³µÍ¬µÀÂ·µÄÊ±ºò²ÅÄÜ¼ÆËã ST ×ø±ê
+    /* è®¡ç®—ç›¸å¯¹äºä¸»è½¦çš„ ST åæ ‡ */
+    if (isSameRoadWithMainVehicle) // ä¸ä¸»è½¦åŒé“è·¯çš„æ—¶å€™æ‰èƒ½è®¡ç®— ST åæ ‡
     {
         SimOneAPI::GetLaneST(mainVehicle.laneID, pt, sRelativeToVehicle, tRelativeToVehicle);
     }
@@ -347,7 +347,7 @@ Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle) :
     {
         tRelativeToVehicle = -1.0;
 
-        // ÕâÀïÊÇ½«Á½¸öµãÖ®¼äµÄ ENU ¾àÀëÍ¶Ó°³É ST ¾àÀë
+        // è¿™é‡Œæ˜¯å°†ä¸¤ä¸ªç‚¹ä¹‹é—´çš„ ENU è·ç¦»æŠ•å½±æˆ ST è·ç¦»
         auto computeRoadDistance = [](const SSD::SimPoint3D& p1, const SSD::SimPoint3D& p2, double azimuth) {
             double theta = azimuth * M_PI / 180.0;
             double dx = p2.x - p1.x;
@@ -357,10 +357,10 @@ Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle) :
         sRelativeToVehicle = mainVehicle.s + computeRoadDistance(mainVehicle.pt, pt, mainVehicle.laneAzimuth);
     }
 
-    /* ¼ÆËãÏà¶ÔÓÚ×ÔÉíËùÔÚ³µµÀµÄ ST ×ø±ê */
+    /* è®¡ç®—ç›¸å¯¹äºè‡ªèº«æ‰€åœ¨è½¦é“çš„ ST åæ ‡ */
     SimOneAPI::GetLaneST(laneID, pt, sRelativeToLane, tRelativeToLane);
 
-    /* ¼ÆËãÏà¶ÔÓÚ×ÔÉíËùÔÚµÀÂ·µÄ ST ×ø±ê */
+    /* è®¡ç®—ç›¸å¯¹äºè‡ªèº«æ‰€åœ¨é“è·¯çš„ ST åæ ‡ */
     double z = 0.0f;
     SimOneAPI::GetRoadST(laneID, pt, sRelativeToRoad, tRelativeToRoad, z);
 
@@ -386,35 +386,35 @@ Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle) :
         float angle = std::min(deltaTheta, 360.0f - deltaTheta);
         float thresTemp = 10.0f;
 
-        if (std::fabs(angle - 90.0f) <= thresTemp || std::fabs(angle - 270.0f) <= thresTemp) // ½üËÆ´¹Ö±
+        if (std::fabs(angle - 90.0f) <= thresTemp || std::fabs(angle - 270.0f) <= thresTemp) // è¿‘ä¼¼å‚ç›´
         {
             type = Type::Vertical;
         }
-        else if (std::fabs(angle - 0.0f) <= thresTemp || std::fabs(angle - 180.0f) <= thresTemp) // ½üËÆÆ½ĞĞ
+        else if (std::fabs(angle - 0.0f) <= thresTemp || std::fabs(angle - 180.0f) <= thresTemp) // è¿‘ä¼¼å¹³è¡Œ
         {
             type = Type::Horizental;
         }
-        else // ¼È²»Æ½ĞĞÒ²²»´¹Ö±
+        else // æ—¢ä¸å¹³è¡Œä¹Ÿä¸å‚ç›´
         {
             type = Type::Vertical;
         }
     }
 }
 
-// Í¨¹ıË÷ÒıÀ´¹¹Ôì
+// é€šè¿‡ç´¢å¼•æ¥æ„é€ 
 Obstacle::Obstacle(size_t index) { *this = Obstacle(pObstacle->obstacle[index]); }
 
-// Í¨¹ıË÷ÒıÁĞ±íÀ´¹¹Ôì
+// é€šè¿‡ç´¢å¼•åˆ—è¡¨æ¥æ„é€ 
 Obstacle::Obstacle(const std::vector<size_t>& index)
 {
 
-    if (index.size() == 1) // Èç¹ûµ±Ç°×éÄÚÖ»ÓĞÒ»¸öÕÏ°­Îï
+    if (index.size() == 1) // å¦‚æœå½“å‰ç»„å†…åªæœ‰ä¸€ä¸ªéšœç¢ç‰©
     {
         *this = Obstacle(pObstacle->obstacle[index.at(0)]);
     }
-    else // Èç¹û²»Ö¹Ò»¸öÕÏ°­Îï
+    else // å¦‚æœä¸æ­¢ä¸€ä¸ªéšœç¢ç‰©
     {
-        std::vector<SSD::SimPoint3D> tlList, brList; // ·Ö±ğ¼ÆËãÃ¿¸öÕÏ°­ÎïµÄ tl ºÍ br
+        std::vector<SSD::SimPoint3D> tlList, brList; // åˆ†åˆ«è®¡ç®—æ¯ä¸ªéšœç¢ç‰©çš„ tl å’Œ br
         SSD::SimPoint3D minTL, maxBR;
 
         for (size_t j = 0, je = index.size(); j < je; ++j)
@@ -425,9 +425,9 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
 
         auto findBoundingBox = [](const std::vector<SSD::SimPoint3D>& tlList, const std::vector<SSD::SimPoint3D>& brList, SSD::SimPoint3D& minTL, SSD::SimPoint3D& maxBR, float azimuth)
             {
-                if (tlList.empty() || brList.empty()) return; // ±ÜÃâ¿ÕÏòÁ¿·ÃÎÊ
+                if (tlList.empty() || brList.empty()) return; // é¿å…ç©ºå‘é‡è®¿é—®
 
-                // ¼ÆËã³õÊ¼±ß½çÖµ
+                // è®¡ç®—åˆå§‹è¾¹ç•Œå€¼
                 auto initBoundingBox = [](float azimuth, SSD::SimPoint3D& minTL, SSD::SimPoint3D& maxBR, double z) {
                     using Limits = std::numeric_limits<float>;
                     if ((0 <= azimuth && azimuth <= 45) || (315 < azimuth && azimuth <= 360)) {
@@ -448,9 +448,9 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
                     }
                     };
 
-                initBoundingBox(azimuth, minTL, maxBR, tlList[0].z); // ³õÊ¼»¯ minTL ºÍ maxBR
+                initBoundingBox(azimuth, minTL, maxBR, tlList[0].z); // åˆå§‹åŒ– minTL å’Œ maxBR
 
-                // ¼ÆËã×îĞ¡°üÎ§ºĞ
+                // è®¡ç®—æœ€å°åŒ…å›´ç›’
                 auto updateBoundingBox = [&](const SSD::SimPoint3D& tl, const SSD::SimPoint3D& br) {
                     if ((0 <= azimuth && azimuth <= 45) || (315 < azimuth && azimuth <= 360)) {
                         minTL.x = std::max(minTL.x, tl.x);
@@ -487,36 +487,36 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
         SimOne_Data_Obstacle_Entry& getAzimuthObstacle = pObstacle->obstacle[index.at(0)];
         SSD::SimPoint3D getAzimuthPos = SSD::SimPoint3D(getAzimuthObstacle.posX, getAzimuthObstacle.posY, getAzimuthObstacle.posZ);
         float azimuth = getLaneAzimuth(m_SampleGetNearMostLane(getAzimuthPos));
-        findBoundingBox(tlList, brList, minTL, maxBR, azimuth); // ½«²»Í¬ÕÏ°­ÎïµÄ bounding box ºÏ³ÉÒ»¸ö
+        findBoundingBox(tlList, brList, minTL, maxBR, azimuth); // å°†ä¸åŒéšœç¢ç‰©çš„ bounding box åˆæˆä¸€ä¸ª
 
         tl = minTL;
         br = maxBR;
 
-        if ((0 <= azimuth && azimuth <= 45 || 315 < azimuth <= 360)) // Ö÷³µÏò¶«ÔË¶¯£¬µÀÂ·ÊÇ¶«Î÷·½ÏòµÄ
+        if ((0 <= azimuth && azimuth <= 45) || (315 < azimuth && azimuth <= 360)) // ä¸»è½¦å‘ä¸œè¿åŠ¨ï¼Œé“è·¯æ˜¯ä¸œè¥¿æ–¹å‘çš„
         {
-            tr = SSD::SimPoint3D(tl.x, br.y, tl.z); // ÓÒÉÏ
-            bl = SSD::SimPoint3D(br.x, tl.y, tl.z); // ×óÏÂ
+            tr = SSD::SimPoint3D(tl.x, br.y, tl.z); // å³ä¸Š
+            bl = SSD::SimPoint3D(br.x, tl.y, tl.z); // å·¦ä¸‹
             width = tl.y - br.y;
             length = tl.x - br.x;
         }
-        else if (135 < azimuth && azimuth <= 225) // Ö÷³µÏòÎ÷ÔË¶¯£¬µÀÂ·ÊÇ¶«Î÷·½ÏòµÄ
+        else if (135 < azimuth && azimuth <= 225) // ä¸»è½¦å‘è¥¿è¿åŠ¨ï¼Œé“è·¯æ˜¯ä¸œè¥¿æ–¹å‘çš„
         {
-            tr = SSD::SimPoint3D(tl.x, br.y, tl.z); // ÓÒÉÏ
-            bl = SSD::SimPoint3D(br.x, tl.y, tl.z); // ×óÏÂ
+            tr = SSD::SimPoint3D(tl.x, br.y, tl.z); // å³ä¸Š
+            bl = SSD::SimPoint3D(br.x, tl.y, tl.z); // å·¦ä¸‹
             width = br.y - tl.y;
             length = br.x - tl.x;
         }
-        else if (45 < azimuth && azimuth <= 135) // Ö÷³µÏò±±ÔË¶¯£¬µÀÂ·ÊÇÄÏ±±·½ÏòµÄ
+        else if (45 < azimuth && azimuth <= 135) // ä¸»è½¦å‘åŒ—è¿åŠ¨ï¼Œé“è·¯æ˜¯å—åŒ—æ–¹å‘çš„
         {
-            tr = SSD::SimPoint3D(br.x, tl.y, tl.z); // ÓÒÉÏ
-            bl = SSD::SimPoint3D(tl.x, br.y, tl.z); // ×óÏÂ
+            tr = SSD::SimPoint3D(br.x, tl.y, tl.z); // å³ä¸Š
+            bl = SSD::SimPoint3D(tl.x, br.y, tl.z); // å·¦ä¸‹
             width = br.x - tl.x;
             length = tl.y - br.y;
         }
-        else // Ö÷³µÏòÄÏÔË¶¯£¬µÀÂ·ÊÇÄÏ±±·½ÏòµÄ
+        else // ä¸»è½¦å‘å—è¿åŠ¨ï¼Œé“è·¯æ˜¯å—åŒ—æ–¹å‘çš„
         {
-            tr = SSD::SimPoint3D(br.x, tl.y, tl.z); // ÓÒÉÏ
-            bl = SSD::SimPoint3D(tl.x, br.y, tl.z); // ×óÏÂ
+            tr = SSD::SimPoint3D(br.x, tl.y, tl.z); // å³ä¸Š
+            bl = SSD::SimPoint3D(tl.x, br.y, tl.z); // å·¦ä¸‹
             width = tl.x - br.x;
             length = br.y - tl.y;
         }
@@ -529,8 +529,8 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
         isSameLaneWithMainVehicle = (laneID == mainVehicle.laneID);
         isSameRoadWithMainVehicle = isSameRoadId(laneID, mainVehicle.laneID);
 
-        /* ¼ÆËãÏà¶ÔÓÚÖ÷³µµÄ ST ×ø±ê */
-        if (isSameRoadWithMainVehicle) // ÓëÖ÷³µÍ¬µÀÂ·µÄÊ±ºò²ÅÄÜ¼ÆËã ST ×ø±ê
+        /* è®¡ç®—ç›¸å¯¹äºä¸»è½¦çš„ ST åæ ‡ */
+        if (isSameRoadWithMainVehicle) // ä¸ä¸»è½¦åŒé“è·¯çš„æ—¶å€™æ‰èƒ½è®¡ç®— ST åæ ‡
         {
             SimOneAPI::GetLaneST(mainVehicle.laneID, pt, sRelativeToVehicle, tRelativeToVehicle);
         }
@@ -538,7 +538,7 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
         {
             tRelativeToVehicle = -1.0;
 
-            // ÕâÀïÊÇ½«Á½¸öµãÖ®¼äµÄ ENU ¾àÀëÍ¶Ó°³É ST ¾àÀë
+            // è¿™é‡Œæ˜¯å°†ä¸¤ä¸ªç‚¹ä¹‹é—´çš„ ENU è·ç¦»æŠ•å½±æˆ ST è·ç¦»
             auto computeRoadDistance = [](const SSD::SimPoint3D& p1, const SSD::SimPoint3D& p2, double azimuth) {
                 double theta = azimuth * M_PI / 180.0;
                 double dx = p2.x - p1.x;
@@ -548,10 +548,10 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
             sRelativeToVehicle = mainVehicle.s + computeRoadDistance(mainVehicle.pt, pt, mainVehicle.laneAzimuth);
         }
 
-        /* ¼ÆËãÏà¶ÔÓÚ×ÔÉíËùÔÚ³µµÀµÄ ST ×ø±ê */
+        /* è®¡ç®—ç›¸å¯¹äºè‡ªèº«æ‰€åœ¨è½¦é“çš„ ST åæ ‡ */
         SimOneAPI::GetLaneST(laneID, pt, sRelativeToLane, tRelativeToLane);
 
-        /* ¼ÆËãÏà¶ÔÓÚ×ÔÉíËùÔÚµÀÂ·µÄ ST ×ø±ê */
+        /* è®¡ç®—ç›¸å¯¹äºè‡ªèº«æ‰€åœ¨é“è·¯çš„ ST åæ ‡ */
         double z = 0.0f;
         SimOneAPI::GetRoadST(laneID, pt, sRelativeToRoad, tRelativeToRoad, z);
 
@@ -572,7 +572,7 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
     }
 }
 
-// ¼ÆËãµ½Ö÷³µ×î½üµÄÕÏ°­Îï
+// è®¡ç®—åˆ°ä¸»è½¦æœ€è¿‘çš„éšœç¢ç‰©
 bool calculateNearestObstacle(const std::vector<Obstacle>& list, Obstacle& obstacle, double& distance)
 {
     if (list.empty()) { return false; }
@@ -595,7 +595,7 @@ bool calculateNearestObstacle(const std::vector<Obstacle>& list, Obstacle& obsta
     return true;
 }
 
-// ÕÒµ½ËùÓĞÔÚÖ÷³µºó·½µÄÕÏ°­Îï
+// æ‰¾åˆ°æ‰€æœ‰åœ¨ä¸»è½¦åæ–¹çš„éšœç¢ç‰©
 void findObstacleBehind(const std::vector<Obstacle>& list, std::vector<size_t>& behindIndexList)
 {
     for (size_t i = 0, ie = list.size(); i < ie; ++i)
@@ -609,7 +609,7 @@ void findObstacleBehind(const std::vector<Obstacle>& list, std::vector<size_t>& 
     }
 }
 
-// ÕÒµ½Ö÷³µºó·½¾àÀëÖ÷³µ×î½üµÄÕÏ°­Îï
+// æ‰¾åˆ°ä¸»è½¦åæ–¹è·ç¦»ä¸»è½¦æœ€è¿‘çš„éšœç¢ç‰©
 bool findNearestObstacleBehind(const std::vector<Obstacle>& list, const std::vector<size_t>& indexList, size_t& index, float& distance)
 {
     if (indexList.empty() || list.empty()) return false;
@@ -629,7 +629,7 @@ bool findNearestObstacleBehind(const std::vector<Obstacle>& list, const std::vec
     return true;
 }
 
-// ¼ÆËã¸ú³µµÄËÙ¶È
+// è®¡ç®—è·Ÿè½¦çš„é€Ÿåº¦
 float caculateFollowingSpeed(const std::vector<Obstacle>& obstacleList, int index)
 {
     Obstacle potentialObstacle;
@@ -641,12 +641,12 @@ float caculateFollowingSpeed(const std::vector<Obstacle>& obstacleList, int inde
     {
         if (potentialObstacle.type == Obstacle::Type::Static)
         {
-            float d0 = 0.05272 * mainVehicle.speed * mainVehicle.speed + 0.06714 * mainVehicle.speed - 0.02188; // d0 ÊÇÉ²³µ¾àÀë
+            float d0 = 0.05272 * mainVehicle.speed * mainVehicle.speed + 0.06714 * mainVehicle.speed - 0.02188; // d0 æ˜¯åˆ¹è½¦è·ç¦»
             LOG << "minDistance:" << minDistance;
             LOG << "d0:" << d0;
-            if ((minDistance - 4.38046) <= (d0 + distance_expect)) // d0 + x ±íÊ¾ÒªÔÚÍ£Ö¹Ïß x Ã×Ç°Í£ÏÂÀ´£¬ - 4.38046 ´ú±í¼õÈ¥ÖÊĞÄµ½³µÍ·µÄ¾àÀë
+            if ((minDistance - 4.38046) <= (d0 + distance_expect)) // d0 + x è¡¨ç¤ºè¦åœ¨åœæ­¢çº¿ x ç±³å‰åœä¸‹æ¥ï¼Œ - 4.38046 ä»£è¡¨å‡å»è´¨å¿ƒåˆ°è½¦å¤´çš„è·ç¦»
             {
-                speed = 0; // Á¢¼´Í£Ö¹¼ÓËÙ£¨É²³µ£©
+                speed = 0; // ç«‹å³åœæ­¢åŠ é€Ÿï¼ˆåˆ¹è½¦ï¼‰
             }
         }
         else
@@ -654,15 +654,15 @@ float caculateFollowingSpeed(const std::vector<Obstacle>& obstacleList, int inde
             LOG << "potentialObstacle.velocity = " << potentialObstacle.velocity;
             LOG << "minDistance = " << minDistance;
 
-            //AdaptiveFollowing adaptiveFollowing(followingKp, followingKi, followingKd, 45); // ¸ú³µ PID
-            adaptiveFollowing.update(potentialObstacle.velocity, minDistance); // ¸ú³µËÙ¶È»·
-            speed = std::max(followingLimitSpeed, adaptiveFollowing.getSpeed()); // ¸øµ½ËÙ¶È£¬²¢ÇÒÊ¹µÃËÙ¶È´óÓÚ×îĞ¡ËÙ¶È
+            //AdaptiveFollowing adaptiveFollowing(followingKp, followingKi, followingKd, 45); // è·Ÿè½¦ PID
+            adaptiveFollowing.update(potentialObstacle.velocity, minDistance); // è·Ÿè½¦é€Ÿåº¦ç¯
+            speed = std::max(followingLimitSpeed, adaptiveFollowing.getSpeed()); // ç»™åˆ°é€Ÿåº¦ï¼Œå¹¶ä¸”ä½¿å¾—é€Ÿåº¦å¤§äºæœ€å°é€Ÿåº¦
         }
     }
     return speed;
 }
 
-// ¼ÆËã³¬³µËÙ¶È£¨Õâ¸öÖ»ÄÜ´¦ÀíÖ÷³µ¼´½«±äµÀ£¬¶øÖ÷³µºó·½ÓÖÓĞÒ»Á¾¿ìËÙĞĞÊ»µÄ¶ÔÊÖ³µÁ¾µÄÇé¿ö£¬²»ÄÜ´¦ÀíÒÆ¶¯µÄ°ëÍ£Ö¹Ïß£©
+// è®¡ç®—è¶…è½¦é€Ÿåº¦ï¼ˆè¿™ä¸ªåªèƒ½å¤„ç†ä¸»è½¦å³å°†å˜é“ï¼Œè€Œä¸»è½¦åæ–¹åˆæœ‰ä¸€è¾†å¿«é€Ÿè¡Œé©¶çš„å¯¹æ‰‹è½¦è¾†çš„æƒ…å†µï¼Œä¸èƒ½å¤„ç†ç§»åŠ¨çš„åŠåœæ­¢çº¿ï¼‰
 void calculateOvertakingSpeed(std::vector<Obstacle>& obstacleList)
 {
     std::vector<size_t> obstacleBehindIndexList;

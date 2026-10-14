@@ -1,18 +1,28 @@
 #pragma once
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
 // Deterministic test doubles, not an SDK compatibility layer.
 namespace SSD {
-struct SimPoint3D { double x = 0, y = 0, z = 0; };
+struct SimPoint3D {
+    double x = 0, y = 0, z = 0;
+    SimPoint3D() = default;
+    SimPoint3D(double a, double b, double c) : x(a), y(b), z(c) {}
+};
+inline std::ostream& operator<<(std::ostream& os, const SimPoint3D& p) {
+    return os << p.x << ',' << p.y << ',' << p.z;
+}
 using SimPoint3DVector = std::vector<SimPoint3D>;
 }
 struct StrategyPoint {
@@ -52,27 +62,69 @@ struct Timer {
 inline Timer timer;
 inline double steerKp = 1.2, steerKd = 0.1, steerKpUse = 0, steerKdUse = 0;
 inline double caseTargetSpeed = 8, achieveThres = 1;
-enum class ESimOne_Gear_Mode { ESimOne_Gear_Mode_Drive, ESimOne_Gear_Mode_Other };
+enum class ESimOne_Gear_Mode {
+    ESimOne_Gear_Mode_Drive, ESimOne_Gear_Mode_Other,
+    ESimOne_Gear_Mode_Reverse, ESimOne_Gear_Mode_Neutral
+};
+enum class ESimOne_Throttle_Mode { ESimOne_Throttle_Mode_Speed, ESimOne_Throttle_Mode_Percent };
 struct Control {
     double throttle = -999, steering = -999;
     ESimOne_Gear_Mode gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Other;
+    ESimOne_Throttle_Mode throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
+    long long timestamp = 0;
+    double brake = 0;
+    bool handbrake = false, isManualGear = false;
 };
 inline std::unique_ptr<Control> pControl = std::make_unique<Control>();
 // drove: pure pursuit ran on targetPath; otherwise a direct stop command was sent.
-struct Observation { double speed, kp, targetX; bool drove; };
+struct Observation {
+    double speed, kp, targetX;
+    bool drove;
+    ESimOne_Gear_Mode gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Other;
+    double steering = 0;
+};
 inline std::vector<Observation> observations;
 inline std::vector<SSD::SimPoint3D> initialPath, targetPath;
 inline std::vector<int> validWayPoints, obstacleList, stopLineList;
-struct Vehicle {
+// The real-drive build retains the production drive, pursuit, PID and curvature
+// bodies. update() supplies deterministic frame input; it is not an SDK test.
+#ifdef TEST_REAL_DRIVE
+using SimOne_Data_Control = Control;
+struct SimOne_Data_Gps {
+    double posX = 0, posY = 0, posZ = 0, velX = 0, velY = 0, velZ = 0, oriZ = 0;
+};
+struct SignalLights { int signalLights = 0; };
+inline auto pGps = std::make_unique<SimOne_Data_Gps>();
+inline auto pLight = std::make_unique<SignalLights>();
+inline int lightSends = 0, lastLights = -1, caseIdx = 41;
+inline size_t ppTargetIndex = 0;
+inline float steerKi = 0, steeringOffsetKp = 0;
+inline std::vector<std::tuple<SSD::SimPoint3D, SSD::SimPoint3D>> slideConfig;
+namespace FlagType { inline bool isManualTrackMode = true; }
+#endif
+struct MainVehicle {
     const char* id = "0";
     SSD::SimPoint3D pt;
+#ifdef TEST_REAL_DRIVE
+    bool useDefaultPath = true, reverse = false;
+    float speed = 0, steeringOffset = 0;
+    void update() {
+        pControl->throttle = caseTargetSpeed;
+        pControl->steering = 0;
+        pControl->gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
+        pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
+        pGps->posX = pt.x; pGps->posY = pt.y; pGps->posZ = pt.z;
+    }
+    void drive();
+#else
     void update() {}
     void drive() {
         if (targetPath.size() < 2) throw std::runtime_error("drive without path");
         observations.push_back({pControl->throttle, steerKpUse, targetPath.back().x, true});
     }
+#endif
 };
-inline Vehicle mainVehicle;
+inline MainVehicle mainVehicle;
 inline float calculateFps(int, double) { return 10; }
 inline void recordEvaluation() {}
 inline void updateObstacleData() {}
@@ -114,9 +166,23 @@ inline bool GenerateRoute(const std::vector<SSD::SimPoint3D>& in,
                           std::vector<int>&, std::vector<SSD::SimPoint3D>& out) {
     return routeCall(in, out);
 }
-inline void SetDrive(const char*, Control* c) {
+inline bool SetDrive(const char*, Control* c) {
+#ifdef TEST_REAL_DRIVE
+    // Capture the SDK boundary AFTER the complete production drive() body.
+    const bool hasPath = targetPath.size() >= 2;
+    observations.push_back({c->throttle, steerKpUse,
+                           hasPath ? targetPath.back().x : std::nan(""), hasPath,
+                           c->gear, c->steering});
+#else
     if (c->gear != ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive || c->steering != 0)
         throw std::runtime_error("direct command is not a stop");
     observations.push_back({c->throttle, steerKpUse, std::nan(""), false});
+#endif
+    return true;
 }
+#ifdef TEST_REAL_DRIVE
+inline bool SetSignalLights(const char*, SignalLights* lights) {
+    ++lightSends; lastLights = lights->signalLights; return true;
+}
+#endif
 }

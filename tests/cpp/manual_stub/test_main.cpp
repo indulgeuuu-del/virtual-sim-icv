@@ -23,10 +23,19 @@ void requireDrove(size_t i, double targetX, double speed, const char* message) {
 void requireStopped(size_t i, const char* message) {
     require(!obs(i).drove && obs(i).speed == 0, message);
 }
+#ifdef TEST_REAL_DRIVE
+#include "drive_output_test.cpp"
+#endif
 int main(int argc, char** argv) {
     try {
         require(argc == 2, "test name required");
         std::string name = argv[1];
+#ifdef TEST_REAL_DRIVE
+        if (driveOutputTest(name)) {
+            std::cout << "PASS " << name << '\n';
+            return 0;
+        }
+#endif
         if (name == "empty") {
             require(main_manual() != 0, "empty strategy accepted");
             require(waits == 0 && observations.empty(), "empty strategy entered loop");
