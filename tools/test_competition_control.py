@@ -37,6 +37,9 @@ OUTPUT_TESTS = (
     'output_arbitration_stop', 'output_arbitration_reverse', 'output_arbitration_slide',
     'output_arbitration_release', 'output_arbitration_disabled', 'output_arbitration_front',
     'output_arbitration_left_front', 'output_arbitration_right_front',
+    'output_limit_high', 'output_limit_equal', 'output_limit_below', 'output_limit_reverse',
+    'output_limit_slide', 'output_limit_overspeed_slide', 'output_limit_zero',
+    'output_limit_nan', 'output_limit_negative', 'output_limit_percent',
 )
 
 

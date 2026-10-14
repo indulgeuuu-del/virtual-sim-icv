@@ -62,6 +62,7 @@ struct Timer {
 inline Timer timer;
 inline double steerKp = 1.2, steerKd = 0.1, steerKpUse = 0, steerKdUse = 0;
 inline double caseTargetSpeed = 8, achieveThres = 1;
+inline float caseMaxSpeed = 15;
 enum class ESimOne_Gear_Mode {
     ESimOne_Gear_Mode_Drive, ESimOne_Gear_Mode_Other,
     ESimOne_Gear_Mode_Reverse, ESimOne_Gear_Mode_Neutral

@@ -305,6 +305,20 @@ void MainVehicle::drive(void)
 			: ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
 	}
 
+	// 配置上限单位为m/s；必须在倒车/溜车分支之后执行，Percent模式不作速度解释。
+	if (pControl->throttleMode == ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed)
+	{
+		const double speedCeiling = std::isfinite(caseMaxSpeed) && caseMaxSpeed >= 0 ? caseMaxSpeed : 0;
+		if (!std::isfinite(caseMaxSpeed) || caseMaxSpeed < 0)
+			LOG << "Invalid caseMaxSpeed: requesting stop";
+		if (pControl->throttle > speedCeiling || mainVehicle.speed > speedCeiling || speedCeiling == 0)
+		{
+			pControl->throttle = std::min<double>(pControl->throttle, speedCeiling);
+			pControl->gear = reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
+				: ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
+			LOG << "Configured speed ceiling active: " << speedCeiling << " m/s";
+		}
+	}
 	SimOneAPI::SetSignalLights(id, pLight.get()); // 设置车辆的转向灯
 	SimOneAPI::SetDrive(id, pControl.get()); // 设置车辆的油门打角
 }

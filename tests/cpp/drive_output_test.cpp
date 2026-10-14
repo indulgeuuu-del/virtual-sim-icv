@@ -13,6 +13,28 @@ bool driveOutputTest(const std::string& name) {
     steerKpUse = steerKp;
     steerKdUse = steerKd;
     pLight->signalLights = 4;
+    if(name.rfind("output_limit_",0)==0) {
+        caseMaxSpeed=2;
+        mainVehicle.reverse=name=="output_limit_reverse";
+        if(name=="output_limit_slide" || name=="output_limit_overspeed_slide")
+            slideConfig={{{0,0,0},{50,0,0}}};
+        double expected=2;
+        if(name=="output_limit_equal") pControl->throttle=2;
+        if(name=="output_limit_below") { pControl->throttle=1; expected=1; }
+        if(name=="output_limit_overspeed_slide") { pControl->throttle=1; expected=1; mainVehicle.speed=3; }
+        if(name=="output_limit_zero") { caseMaxSpeed=0; expected=0; }
+        if(name=="output_limit_nan") { caseMaxSpeed=std::nanf(""); expected=0; }
+        if(name=="output_limit_negative") { caseMaxSpeed=-1; expected=0; }
+        if(name=="output_limit_percent") {
+            caseMaxSpeed=0; pControl->throttleMode=Mode::ESimOne_Throttle_Mode_Percent;
+            pControl->throttle=0.5; expected=0.5;
+        }
+        mainVehicle.drive();
+        require(obs(0).speed==expected,"configured ceiling not enforced or ordinary request changed");
+        require(obs(0).gear==(mainVehicle.reverse ? Gear::ESimOne_Gear_Mode_Reverse : Gear::ESimOne_Gear_Mode_Drive),
+                "limited command remained in neutral");
+        return true;
+    }
     if(name.rfind("output_arbitration_",0)==0) {
         auto& n=mainVehicle.neighborhood;
         const bool front=name=="output_arbitration_front";
