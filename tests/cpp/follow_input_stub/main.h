@@ -12,6 +12,18 @@
 // SDK boundary fixture: failed reads may leave OLD output or CLEAR it.
 // Full following loop, obstacle fetch and GPS gate come from production.
 namespace SSD { template<class T> using SimVector = std::vector<T>; }
+namespace SSD {
+struct SimString {
+    std::string value;
+    SimString(const char* s=""):value(s) {}
+    bool Empty() const { return value.empty(); }
+    const char* GetString() const { return value.c_str(); }
+};
+struct SimPoint3D {
+    double x,y,z;
+    SimPoint3D(double a=0,double b=0,double c=0):x(a),y(b),z(c) {}
+};
+}
 struct Logger {
     enum class Color { BrightBlue, BrightMagenta, BrightGreen };
     std::string text;
@@ -31,7 +43,7 @@ struct Control {
     ESimOne_Throttle_Mode throttleMode=ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
 };
 struct Light { int signalLights=0; };
-struct Gps {};
+struct Gps { double posX=10,posY=20,posZ=0; };
 struct RawObstacle { double s=100; };
 struct GroundTruth { int obstacleSize=1; RawObstacle obstacle[2]; };
 inline auto pControl=std::make_unique<Control>();
@@ -51,20 +63,37 @@ inline std::vector<int> trafficLightList, stopLineList;
 struct Timer { void tic() {} double get() const { return 0.1; } };
 inline Timer timer;
 inline float calculateFps(int,double) { return 10; }
-struct Input { bool gps=true, obstacle=true, send=true; int count=1; bool route=true; };
+struct Input { bool gps=true, obstacle=true, send=true; int count=1; bool route=true;
+    bool near=true, projection=true, emptyLane=false, finiteProjection=true, finitePosition=true; };
 inline std::vector<Input> inputs;
 inline bool clearFailedOutput=false;
 inline std::vector<Control> sends;
+struct MapState { double x,s,t; std::string lane,lastLane; };
+inline std::vector<MapState> mapStates;
+inline void recordMapState();
 inline const Input& current() { return inputs.at(waits-1); }
 struct EndFrames {};
 namespace SimOneAPI {
-inline bool GetTrafficLightList(std::vector<int>&) { return true; }
+// Official API is void: empty list is not a failure signal.
+inline void GetTrafficLightList(std::vector<int>&) {}
 inline int Wait() { if(waits==inputs.size()) throw EndFrames{}; return ++waits; }
 inline void NextFrame(int frame) {
     if(frame!=waits || advances+1!=waits) throw std::runtime_error("frame pairing");
     ++advances;
+    recordMapState();
 }
-inline bool GetGps(const char*, Gps*) { ++gpsReads; return current().gps; }
+inline bool GetGps(const char*, Gps* out) {
+    ++gpsReads; out->posX=current().finitePosition ? 10+waits : std::nan(""); return current().gps;
+}
+inline bool GetNearMostLane(const SSD::SimPoint3D&,SSD::SimString& lane,double& s,double& t,double& sc,double& tc) {
+    lane=current().emptyLane ? "" : "1_0_1"; s=10;t=sc=tc=0;
+    return current().near; // Failure may still write an apparently valid lane.
+}
+inline bool GetLaneST(const SSD::SimString&,const SSD::SimPoint3D&,double& s,double& t) {
+    s=current().projection ? 10 : 999;
+    t=current().finiteProjection ? 0 : std::nan("");
+    return current().projection;
+}
 inline bool GetGroundTruth(const char*, GroundTruth* out) {
     ++obstacleReads;
     if(!current().obstacle) {
@@ -79,7 +108,9 @@ inline bool SetDrive(const char*, Control* control) {
 }
 struct MainVehicle {
     const char* id="0";
-    double s=0;
+    double s=0,t=0;
+    SSD::SimPoint3D pt;
+    SSD::SimString laneID,lastLaneID;
     float speed=3;
     bool reverse=false;
     struct { void clear() {} } neighborhood;
@@ -88,6 +119,14 @@ struct MainVehicle {
     void drive() { ++drives; SimOneAPI::SetDrive(id,pControl.get()); }
 };
 inline MainVehicle mainVehicle;
+inline void recordMapState() {
+    mapStates.push_back({mainVehicle.pt.x,mainVehicle.s,mainVehicle.t,
+                        mainVehicle.laneID.GetString(),mainVehicle.lastLaneID.GetString()});
+}
+inline SSD::SimString m_SampleGetNearMostLane(const SSD::SimPoint3D& pt) {
+    SSD::SimString lane; double s,t,sc,tc;
+    SimOneAPI::GetNearMostLane(pt,lane,s,t,sc,tc); return lane;
+}
 struct Obstacle {
     enum class Type { Static, Vertical, Horizental, AmongCrosswalk };
     Type type=Type::Horizental;

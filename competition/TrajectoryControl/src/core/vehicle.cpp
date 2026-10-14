@@ -60,17 +60,33 @@ bool MainVehicle::update(int timeoutFrames)
 	}
 
 	// 计算主车的详细参数
-	pt = SSD::SimPoint3D(pGps->posX, pGps->posY, pGps->posZ); // 主车坐标
-	if (frameCount == 1) // 第一帧的时候让上次和本次的主车道路 ID 相同
+	const SSD::SimPoint3D newPt(pGps->posX, pGps->posY, pGps->posZ);
+	if (!std::isfinite(newPt.x) || !std::isfinite(newPt.y) || !std::isfinite(newPt.z))
 	{
-		lastLaneID = laneID = m_SampleGetNearMostLane(pt);
+		globalLogger(Logger::Color::BrightMagenta) << "Invalid vehicle position: reject frame";
+		return false;
 	}
-	else
+	// SDK failures can still modify output parameters. Commit only a complete result.
+	SSD::SimString newLaneID;
+	double nearS = 0, nearT = 0, centerS = 0, centerT = 0;
+	if (!SimOneAPI::GetNearMostLane(newPt, newLaneID, nearS, nearT, centerS, centerT)
+		|| newLaneID.Empty())
 	{
-		lastLaneID = laneID; // 上一帧主车所在的道路 ID
-		laneID = m_SampleGetNearMostLane(pt); // 主车所在的道路 ID
+		globalLogger(Logger::Color::BrightMagenta) << "Vehicle lane unavailable: reject frame";
+		return false;
 	}
-	SimOneAPI::GetLaneST(laneID, pt, s, t);
+	double newS = std::nan(""), newT = std::nan("");
+	if (!SimOneAPI::GetLaneST(newLaneID, newPt, newS, newT)
+		|| !std::isfinite(newS) || !std::isfinite(newT))
+	{
+		globalLogger(Logger::Color::BrightMagenta) << "Vehicle lane projection failed: reject frame";
+		return false;
+	}
+	lastLaneID = (frameCount == 1 || laneID.Empty()) ? newLaneID : laneID;
+	laneID = newLaneID;
+	pt = newPt;
+	s = newS;
+	t = newT;
 	laneAzimuth = getLaneAzimuth(laneID); // 主车所在道路的方位角
 
 	vx = pGps->velX;

@@ -18,6 +18,13 @@ int main(int argc,char** argv) {
         else if(name=="route_initial") inputs[0].route=false;
         else if(name=="route_repeated") { inputs[0].route=false; inputs[1].route=false; }
         else if(name=="empty_valid") { for(auto& input:inputs) input.count=0; }
+        else if(name=="map_nearest") inputs[1].near=false;
+        else if(name=="map_projection") inputs[1].projection=false;
+        else if(name=="map_empty_lane") inputs[1].emptyLane=true;
+        else if(name=="map_nonfinite") inputs[1].finiteProjection=false;
+        else if(name=="map_bad_position") inputs[1].finitePosition=false;
+        else if(name=="map_initial") inputs[0].projection=false;
+        else if(name=="map_repeated") { inputs[0].projection=false; inputs[1].projection=false; }
         else throw std::runtime_error("unknown test");
         try {
 #ifdef TEST_TRACK_PREFIX
@@ -28,9 +35,12 @@ int main(int argc,char** argv) {
             throw std::runtime_error("unexpected return");
         } catch(const EndFrames&) {}
         require(waits==advances && sends.size()==inputs.size(),"missing stop command or unpaired frame");
+        require(mapStates.size()==inputs.size(),"missing map observations");
         int expectedDrives=0;
         for(size_t i=0;i<inputs.size();++i) {
-            if(inputs[i].gps && inputs[i].obstacle && inputs[i].route) {
+            const auto& input=inputs[i];
+            if(input.gps && input.obstacle && input.route && input.near && input.projection &&
+                !input.emptyLane && input.finiteProjection && input.finitePosition) {
                 ++expectedDrives;
                 require(sends[i].throttle>0,"fresh input failed to resume");
             } else {
@@ -39,6 +49,13 @@ int main(int argc,char** argv) {
                         "invalid stop mode or stale steering");
                 require(sends[i].gear==(mainVehicle.reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
                         : ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive),"stop used wrong gear");
+            }
+            if(!input.near || !input.projection || input.emptyLane || !input.finiteProjection || !input.finitePosition) {
+                const MapState previous=i==0 ? MapState{0,0,0,"",""} : mapStates[i-1];
+                const auto& now=mapStates[i];
+                require(now.x==previous.x && now.s==previous.s && now.t==previous.t &&
+                        now.lane==previous.lane && now.lastLane==previous.lastLane,
+                        "failed map read partially overwrote valid vehicle state");
             }
         }
         require(drives==expectedDrives,"invalid input reached drive or valid input not recovered");

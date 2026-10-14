@@ -77,7 +77,7 @@ def main():
     )
     report = {'sdk_build_verified': False, 'platform_run_verified': False,
               'official_score_verified': False,
-              'scope': 'geometry, GPS-update and track input prefixes; full strategy and following loops; obstacle fetch; real drive/pursuit/PID/curvature',
+              'scope': 'geometry, GPS-update/lane-projection and track input prefixes; full strategy and following loops; obstacle fetch; real drive/pursuit/PID/curvature',
               'limitations': 'map/API/frame-input fixtures; following/track input suites substitute drive; no full update()/track planner, SDK, vehicle dynamics or scoring',
               'tests': {}, 'passed': False}
     try:
@@ -219,7 +219,9 @@ def main():
         fetch = sources['TrajectoryControl/src/main.cpp'].split('bool updateObstacleData(', 1)[1]
         gps_gate = between(sources['TrajectoryControl/src/core/vehicle.cpp'],
                            'bool MainVehicle::update(', '// 计算主车的详细参数')
-        follow_support = '#include "main.h"\n' + gps_gate + '\nreturn true;\n}\n'
+        projection = between(sources['TrajectoryControl/src/core/vehicle.cpp'],
+                             '// 计算主车的详细参数', '\tlaneAzimuth =')
+        follow_support = '#include "main.h"\n' + gps_gate + '\n' + projection + '\nreturn true;\n}\n'
         follow_support += 'bool updateObstacleData(' + fetch + '\n'
         follow_support += replacements['// @PRODUCTION_NEAREST@'] + replacements['// @PRODUCTION_FOLLOWING@']
         (follow_dir / 'support.cpp').write_bytes(follow_support.encode('utf-8'))
@@ -280,11 +282,15 @@ def main():
         compile_run(follow_dir, ['main_follow.cpp', 'support.cpp', 'test.cpp'],
                     ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
                      'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
-                     'gps_reverse', 'prolonged_failure', 'pid_recovery', 'route_initial', 'route_repeated'], 'follow_input')
+                     'gps_reverse', 'prolonged_failure', 'pid_recovery', 'route_initial', 'route_repeated',
+                     'map_nearest','map_projection','map_empty_lane','map_nonfinite','map_bad_position',
+                     'map_initial','map_repeated'], 'follow_input')
         compile_run(follow_dir, ['track_prefix.cpp', 'support.cpp', 'test.cpp'],
                     ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
                      'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
-                     'gps_reverse', 'prolonged_failure', 'route_initial', 'route_repeated'], 'track_input', ['/DTEST_TRACK_PREFIX'])
+                     'gps_reverse', 'prolonged_failure', 'route_initial', 'route_repeated',
+                     'map_nearest','map_projection','map_empty_lane','map_nonfinite','map_bad_position',
+                     'map_initial','map_repeated'], 'track_input', ['/DTEST_TRACK_PREFIX'])
         report['passed'] = bool(report['tests']) and all(t['passed'] for t in report['tests'].values())
     except (OSError, ValueError, IndexError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
         report['error'] = f'{type(error).__name__}: {error}'
