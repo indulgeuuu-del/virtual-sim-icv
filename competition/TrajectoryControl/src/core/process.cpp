@@ -166,40 +166,39 @@ float getDistT(const SSD::SimPoint3D& currentPos, const SSD::SimPoint3D& target)
 {
 	SSD::SimString currentPosLaneId = m_SampleGetNearMostLane(currentPos);
 	SSD::SimString targetPosLaneId = m_SampleGetNearMostLane(target);
+	if (currentPosLaneId.Empty() || targetPosLaneId.Empty())
+	{
+		globalLogger(Logger::Color::BrightGreen) << "Invalid lane for lateral distance";
+		return std::numeric_limits<float>::quiet_NaN();
+	}
 	if (isSameRoadId(currentPosLaneId, targetPosLaneId))
 	{
-		double currentPos_s, currentPos_t, targetPos_s, targetPos_t;
+		double currentPos_s = 0, currentPos_t = 0, targetPos_s = 0, targetPos_t = 0;
 		if (!SimOneAPI::GetLaneST(currentPosLaneId, currentPos, currentPos_s, currentPos_t))
 		{
 			globalLogger(Logger::Color::BrightGreen) << "获取两个点之间的 ST 距离时，主车 ST 坐标获取失败";
+			return std::numeric_limits<float>::quiet_NaN();
 		}
 		if (!SimOneAPI::GetLaneST(currentPosLaneId, target, targetPos_s, targetPos_t))
 		{
 			globalLogger(Logger::Color::BrightGreen) << "获取两个点之间的 ST 距离时，目标点 ST 坐标获取失败";
+			return std::numeric_limits<float>::quiet_NaN();
 		}
 
-		return static_cast<float>(targetPos_t - currentPos_t);
+		const float distance = static_cast<float>(targetPos_t - currentPos_t);
+		if (!std::isfinite(distance))
+		{
+			globalLogger(Logger::Color::BrightGreen) << "Invalid lateral projection value";
+			return std::numeric_limits<float>::quiet_NaN();
+		}
+		return distance;
 	}
+	// 不同道路没有共同的lane-t参考；此项不能证明两条轨迹接近。
+	return std::numeric_limits<float>::max();
 }
 float getDistT(const SSD::SimPoint3D& currentPos, const SimOne_Data_Vec3f& target)
 {
-	SSD::SimPoint3D  point = SSD::SimPoint3D(target.x, target.y, target.z);
-	SSD::SimString currentPosLaneId = m_SampleGetNearMostLane(currentPos);
-	SSD::SimString targetPosLaneId = m_SampleGetNearMostLane(point);
-	if (isSameRoadId(currentPosLaneId, targetPosLaneId))
-	{
-		double currentPos_s, currentPos_t, targetPos_s, targetPos_t;
-		if (!SimOneAPI::GetLaneST(currentPosLaneId, currentPos, currentPos_s, currentPos_t))
-		{
-			globalLogger(Logger::Color::BrightGreen) << "获取两个点之间的 ST 距离时，主车 ST 坐标获取失败";
-		}
-		if (!SimOneAPI::GetLaneST(currentPosLaneId, point, targetPos_s, targetPos_t))
-		{
-			globalLogger(Logger::Color::BrightGreen) << "获取两个点之间的 ST 距离时，目标点 ST 坐标获取失败";
-		}
-
-		return static_cast<float>(targetPos_t - currentPos_t);
-	}
+	return getDistT(currentPos, SSD::SimPoint3D(target.x, target.y, target.z));
 }
 
 // 查看有无斑马线

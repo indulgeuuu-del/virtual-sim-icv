@@ -38,6 +38,7 @@ OUTPUT_TESTS = (
     'output_arbitration_stop', 'output_arbitration_reverse', 'output_arbitration_slide',
     'output_arbitration_release', 'output_arbitration_disabled', 'output_arbitration_front',
     'output_arbitration_left_front', 'output_arbitration_right_front',
+    'output_arbitration_bad_projection',
     'output_limit_high', 'output_limit_equal', 'output_limit_below', 'output_limit_reverse',
     'output_limit_slide', 'output_limit_overspeed_slide', 'output_limit_zero',
     'output_limit_nan', 'output_limit_negative', 'output_limit_percent',
@@ -104,6 +105,7 @@ def main():
             root / 'tests/cpp/follow_input_stub/main.h', root / 'tests/cpp/follow_input_stub/test.cpp',
             root / 'tests/cpp/navigation_test.cpp',
             root / 'tests/cpp/lane_distance_test.cpp',
+            root / 'tests/cpp/lateral_gap_test.cpp',
             root / 'tests/cpp/track_speed_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
@@ -136,11 +138,25 @@ def main():
         if navigation_harness.count('// @NAVIGATION@') != 1:
             raise ValueError('missing navigation insertion point')
         (output / 'navigation.cpp').write_bytes(navigation_harness.replace('// @NAVIGATION@', navigation).encode('utf-8'))
-        lane_distance = between(sources['TrajectoryControl/src/core/process.cpp'], 'float getDistS(', 'float getDistT(')
+        lane_distance = between(sources['TrajectoryControl/src/core/process.cpp'], 'float getDistS(', '// 查看有无斑马线')
         distance_harness = read_source(root / 'tests/cpp/lane_distance_test.cpp')
         if distance_harness.count('// @LONGITUDINAL_DISTANCE@') != 1:
             raise ValueError('missing distance insertion point')
         (output / 'lane_distance.cpp').write_bytes(distance_harness.replace('// @LONGITUDINAL_DISTANCE@', lane_distance).encode('utf-8'))
+        (output / 'lane_distance_support.hpp').write_bytes(distance_harness.replace(
+            '// @LONGITUDINAL_DISTANCE@', lane_distance).split('int main(',1)[0].encode('utf-8'))
+        track = sources['TrajectoryControl/src/main_track.cpp']
+        if 'auto predictedLateralGap =' in track:
+            if track.count('predictedLateralGap(*vehicle)') != 7:
+                raise ValueError('review all lateral-gap call sites')
+            gap_helper = between(track, 'auto predictedLateralGap =', '// 如果左前邻域有车')
+        else:
+            legacy_gap = 'getDistT(targetPath.back(), vehicle->predictionGM.back())'
+            if track.count(legacy_gap) != 7:
+                raise ValueError('review legacy lateral-gap extraction')
+            gap_helper = 'auto predictedLateralGap = [&](const Obstacle& o) { const Obstacle* vehicle=&o; return ' + legacy_gap + '; };\n'
+        gap_harness = read_source(root / 'tests/cpp/lateral_gap_test.cpp')
+        (output / 'lateral_gap.cpp').write_bytes(gap_harness.replace('// @PREDICTED_GAP@', gap_helper).encode('utf-8'))
 
         drive_dir = output / 'drive'
         drive_dir.mkdir(exist_ok=True)
@@ -176,7 +192,8 @@ def main():
         track = sources['TrajectoryControl/src/main_track.cpp']
         speed_support = read_source(root / 'tests/cpp/track_speed_support.cpp')
         speed_parts = {
-            '// @BEFORE_OVERTAKING@': between(track, '\t\t// 超车速度规划', '\t\tif (overtakeSwitcher.state)'),
+            '// @BEFORE_OVERTAKING@': between(track, '\t\t// 超车速度规划', '\t\tif (overtakeSwitcher.state'),
+            '// @INJECT_PROJECTION_FAILURE@': ('lateralProjectionFailed = projectionFailed;' if 'bool lateralProjectionFailed' in track else '(void)projectionFailed;'),
             '// @ARBITRATION_AND_FINAL_GUARD@': between(track, '\t\t\t// 1. LF、LB', '\t\tmainVehicle.drive();'),
         }
         for marker, code in speed_parts.items():
@@ -243,7 +260,11 @@ def main():
                     'empty_route', 'short_route', 'lane_failure', 'empty_lane', 'short_lane',
                     'route_success', 'lane_success', 'repeat', 'recovery'], 'navigation')
         compile_run(output, ['lane_distance.cpp'], ['forward', 'backward', 'different_road', 'current_failure',
-                    'target_failure', 'missing_lane', 'nonfinite'], 'lane_distance')
+                    'target_failure', 'missing_lane', 'nonfinite',
+                    'lateral_forward', 'lateral_backward', 'lateral_different_road', 'lateral_current_failure',
+                    'lateral_target_failure', 'lateral_missing_lane', 'lateral_nonfinite'], 'lane_distance')
+        compile_run(output, ['lateral_gap.cpp'], ['positive_far','negative_far','positive_near','negative_near',
+                    'different_road','missing_lane','current_failure','target_failure','empty_prediction','empty_path'], 'lateral_gap')
         compile_run(drive_dir, ['main_manual.cpp', 'drive.cpp', 'following.cpp', 'track_speed.cpp', 'test_main.cpp'],
                     LOOP_TESTS + OUTPUT_TESTS, 'drive', ['/DTEST_REAL_DRIVE'])
         compile_run(follow_dir, ['main_follow.cpp', 'support.cpp', 'test.cpp'],

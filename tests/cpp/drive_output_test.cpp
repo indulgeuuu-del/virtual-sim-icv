@@ -3,7 +3,7 @@
 // a zero target speed must reach SetDrive even during reverse/sliding logic.
 // This does not assert physical standstill, stopping distance, or official score.
 extern float followingTargetForTest(double distance, float leadSpeed);
-extern void trackSpeedForTest(float proposed);
+extern void trackSpeedForTest(float proposed, bool projectionFailed=false);
 bool driveOutputTest(const std::string& name) {
     using Gear = ESimOne_Gear_Mode;
     using Mode = ESimOne_Throttle_Mode;
@@ -66,7 +66,8 @@ bool driveOutputTest(const std::string& name) {
         const bool rightFront=name=="output_arbitration_right_front";
         const bool release=name=="output_arbitration_release";
         const bool disabled=name=="output_arbitration_disabled";
-        pControl->throttle=(front || leftFront || rightFront) ? 8 : 0;
+        const bool projectionFailed=name=="output_arbitration_bad_projection";
+        pControl->throttle=(front || leftFront || rightFront || projectionFailed) ? 8 : 0;
         mainVehicle.reverse=name=="output_arbitration_reverse";
         if(name=="output_arbitration_slide") slideConfig={{{0,0,0},{50,0,0}}};
         overtakeSwitcher.state=!disabled;
@@ -74,7 +75,7 @@ bool driveOutputTest(const std::string& name) {
         if(front) { n.bf=true; n.vf=2; }
         if(leftFront) { n.blf=true; n.vlf=2; }
         if(rightFront) { n.brf=true; n.vrf=2; }
-        trackSpeedForTest(6);
+        trackSpeedForTest(6,projectionFailed);
         require(obs(0).speed==((front || leftFront || rightFront) ? 2 : 0),"overtaking overrode stop/front speed ceiling");
         require(obs(0).gear==(mainVehicle.reverse ? Gear::ESimOne_Gear_Mode_Reverse : Gear::ESimOne_Gear_Mode_Drive),
                 "stop arbitration lost engaged gear");

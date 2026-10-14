@@ -189,8 +189,21 @@ int main_track(void)
 		// 停止线等上游给出的停车义务，不能被后方车辆的加速建议覆盖。
 		const bool stopBeforeOvertaking = pControl->throttleMode == ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed
 			&& pControl->throttle == 0.0f;
-		if (overtakeSwitcher.state) /* 邻域超车 */
+		bool lateralProjectionFailed = overtakeSwitcher.state && targetPath.size() < 2;
+		if (overtakeSwitcher.state && !lateralProjectionFailed) /* 邻域超车 */
 		{
+			auto predictedLateralGap = [&](const Obstacle& vehicle) {
+				if (targetPath.empty() || vehicle.predictionGM.empty()) {
+					lateralProjectionFailed = true;
+					return std::numeric_limits<float>::max();
+				}
+				const float offset = getDistT(targetPath.back(), vehicle.predictionGM.back());
+				if (!std::isfinite(offset)) {
+					lateralProjectionFailed = true;
+					return std::numeric_limits<float>::max();
+				}
+				return std::fabs(offset); // 方向符号不是距离大小
+			};
 			// 如果左前邻域有车，且主车轨迹的终点落在左前邻域内
 			if (!mainVehicle.neighborhood.leftFront.empty() &&
 				isSameRoadId(m_SampleGetNearMostLane(targetPath.back()), mainVehicle.laneLink.leftNeighborLaneName))
@@ -203,7 +216,7 @@ int main_track(void)
 					// 如果该对手车辆的轨迹与主车将来的轨迹相交
 					if (isTrajInterfere(targetPath, *vehicle) ||
 						UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
-						|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
+						|| predictedLateralGap(*vehicle) < 1.1
 						)
 						//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
 					{
@@ -233,7 +246,7 @@ int main_track(void)
 						// 如果该对手车辆的轨迹与主车将来的轨迹相交
 					if (isTrajInterfere(targetPath, *vehicle) ||
 						UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
-						|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
+						|| predictedLateralGap(*vehicle) < 1.1
 						)
 
 						//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
@@ -287,7 +300,7 @@ int main_track(void)
 						// 如果该对手车辆的轨迹与主车将来的轨迹相交
 						if (isTrajInterfere(targetPath, *vehicle) ||
 							UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
-							|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
+							|| predictedLateralGap(*vehicle) < 1.1
 							)
 							//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
 						{
@@ -318,7 +331,7 @@ int main_track(void)
 						// 如果该对手车辆的轨迹与主车将来的轨迹相交
 						if (isTrajInterfere(targetPath, *vehicle) ||
 							UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
-							|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
+							|| predictedLateralGap(*vehicle) < 1.1
 							)
 							//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
 						{
@@ -351,7 +364,7 @@ int main_track(void)
 						// 如果该对手车辆的轨迹与主车将来的轨迹相交
 						if (isTrajInterfere(targetPath, *vehicle) ||
 							UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
-							|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
+							|| predictedLateralGap(*vehicle) < 1.1
 							)
 						{
 							LOG << "右后有车与主车相交";
@@ -377,7 +390,7 @@ int main_track(void)
 					// 如果该对手车辆的轨迹与主车将来的轨迹相交
 					if (isTrajInterfere(targetPath, *vehicle) ||
 						UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
-						|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
+						|| predictedLateralGap(*vehicle) < 1.1
 						)
 						//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
 					{
@@ -403,7 +416,7 @@ int main_track(void)
 					// 如果该对手车辆的轨迹与主车将来的轨迹相交
 					if (isTrajInterfere(targetPath, *vehicle) ||
 						UtilGeometry::curvesIntersect(vehicle->predictionGM, targetPath)
-						|| getDistT(targetPath.back(), vehicle->predictionGM.back()) < 1.1
+						|| predictedLateralGap(*vehicle) < 1.1
 						)
 						//UtilGeometry::curvesIntersect(vehicle->predictionPtr->trajectory, vehicle->predictionPtr->trajectorySize, targetPath))
 					{
@@ -568,7 +581,8 @@ int main_track(void)
 				pControl->throttle = std::min<double>(pControl->throttle, mainVehicle.neighborhood.vrf);
 		}
 
-		if (stopBeforeOvertaking) pControl->throttle = 0.0f;
+		if (stopBeforeOvertaking || lateralProjectionFailed) pControl->throttle = 0.0f;
+		if (lateralProjectionFailed) LOG << "Invalid lateral prediction: stop and retry";
 		mainVehicle.drive();
 
 		for (size_t i = 0, ie = stopLineList.size(); i < ie; ++i)
