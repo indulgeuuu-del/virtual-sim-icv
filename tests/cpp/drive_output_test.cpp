@@ -13,6 +13,30 @@ bool driveOutputTest(const std::string& name) {
     steerKpUse = steerKp;
     steerKdUse = steerKd;
     pLight->signalLights = 4;
+    if(name.rfind("output_invalid_",0)==0 || name=="output_send_failure") {
+        if(name=="output_send_failure") {
+            controlSendOk=false;
+            mainVehicle.drive();
+            require(logText.find("SetDrive")!=std::string::npos,"failed drive send has no diagnostic");
+            return true;
+        }
+        pControl->throttle=std::nan("");
+        if(name=="output_invalid_infinite") pControl->throttle=std::numeric_limits<double>::infinity();
+        if(name=="output_invalid_negative") pControl->throttle=-1;
+        if(name=="output_invalid_reverse") mainVehicle.reverse=true;
+        if(name=="output_invalid_slide") slideConfig={{{0,0,0},{50,0,0}}};
+        if(name=="output_invalid_percent") pControl->throttleMode=Mode::ESimOne_Throttle_Mode_Percent;
+        if(name=="output_invalid_steering") {
+            pControl->throttle=8; pControl->steering=std::nan(""); mainVehicle.useDefaultPath=false;
+        }
+        mainVehicle.drive();
+        require(obs(0).speed==0 && std::isfinite(obs(0).steering),"invalid control reached SetDrive");
+        require(pControl->throttleMode==Mode::ESimOne_Throttle_Mode_Speed,"invalid control stop not in speed mode");
+        require(obs(0).gear==(mainVehicle.reverse ? Gear::ESimOne_Gear_Mode_Reverse : Gear::ESimOne_Gear_Mode_Drive),
+                "invalid control stop stayed in neutral");
+        require(logText.find("Invalid")!=std::string::npos,"invalid control lacks diagnostic");
+        return true;
+    }
     if(name.rfind("output_limit_",0)==0) {
         caseMaxSpeed=2;
         mainVehicle.reverse=name=="output_limit_reverse";

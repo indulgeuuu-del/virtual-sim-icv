@@ -85,6 +85,7 @@ struct Observation {
     double steering = 0;
 };
 inline std::vector<Observation> observations;
+inline bool controlSendOk=true;
 inline std::vector<SSD::SimPoint3D> initialPath, targetPath;
 inline std::vector<int> validWayPoints, obstacleList, stopLineList;
 struct SimOne_Data_Gps {
@@ -197,7 +198,7 @@ inline bool SetDrive(const char*, Control* c) {
         throw std::runtime_error("direct command is not a stop");
     observations.push_back({c->throttle, steerKpUse, std::nan(""), false});
 #endif
-    return true;
+    return controlSendOk;
 }
 #ifdef TEST_REAL_DRIVE
 inline bool SetSignalLights(const char*, SignalLights* lights) {

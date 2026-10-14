@@ -217,6 +217,14 @@ void MainVehicle::rebuildNeighborhood(void)
 // 更新主车控制参数
 void MainVehicle::drive(void)
 {
+	// 在倒车等分支覆盖请求前检查，避免NaN/负速度被伪装成正常加速。
+	if (!std::isfinite(pControl->throttle) ||
+		(pControl->throttleMode == ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed && pControl->throttle < 0))
+	{
+		LOG << "Invalid throttle request: requesting stop";
+		pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
+		pControl->throttle = 0.0f;
+	}
 	const bool invalidDefaultPath = useDefaultPath && targetPath.size() < 2;
 	if (invalidDefaultPath)
 	{
@@ -319,8 +327,18 @@ void MainVehicle::drive(void)
 			LOG << "Configured speed ceiling active: " << speedCeiling << " m/s";
 		}
 	}
+	if (!std::isfinite(pControl->steering) || !std::isfinite(pControl->throttle))
+	{
+		LOG << "Invalid final control output: requesting stop";
+		pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
+		pControl->throttle = 0.0f;
+		pControl->steering = 0.0f;
+		pControl->gear = reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
+			: ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
+	}
 	SimOneAPI::SetSignalLights(id, pLight.get()); // 设置车辆的转向灯
-	SimOneAPI::SetDrive(id, pControl.get()); // 设置车辆的油门打角
+	if (!SimOneAPI::SetDrive(id, pControl.get()))
+		LOG << "SetDrive failed: control command was not accepted";
 }
 
 // 清除所有邻域信息

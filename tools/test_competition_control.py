@@ -40,6 +40,9 @@ OUTPUT_TESTS = (
     'output_limit_high', 'output_limit_equal', 'output_limit_below', 'output_limit_reverse',
     'output_limit_slide', 'output_limit_overspeed_slide', 'output_limit_zero',
     'output_limit_nan', 'output_limit_negative', 'output_limit_percent',
+    'output_invalid_nan', 'output_invalid_infinite', 'output_invalid_negative',
+    'output_invalid_reverse', 'output_invalid_slide', 'output_invalid_percent',
+    'output_invalid_steering', 'output_send_failure',
 )
 
 
