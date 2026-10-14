@@ -31,6 +31,9 @@ def main():
     report = {'sources': {path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
                           for path in (source, parser_source)},
               'sdk_build_verified': False, 'platform_run_verified': False, 'tests': {}}
+    if 'StopController.h' in read_source(source):
+        header = base / 'util/StopController.h'
+        report['sources'][header.relative_to(root).as_posix()] = hashlib.sha256(header.read_bytes()).hexdigest()
     try:
         if os.name != 'nt':
             raise RuntimeError('This runner currently supports Windows/MSVC only')
@@ -70,13 +73,16 @@ def main():
         # Loop: the complete production main_manual.cpp, only normalizing encoding.
         # Its quoted main.h now resolves to the double beside this generated copy.
         (output / 'main_manual.cpp').write_bytes(read_source(source).encode('utf-8'))
-        for name in ('main.h', 'test_main.cpp'):
+        for name in ('main.h', 'test_main.cpp', 'test_stop_timing.cpp'):
             shutil.copyfile(root / 'tests/cpp/manual_stub' / name, output / name)
-        compile_suite(output, ['main_manual.cpp', 'test_main.cpp'], output / 'manual_test.exe')
+        compile_suite(output, ['main_manual.cpp', 'test_main.cpp'], output / 'manual_test.exe', [base / 'util'])
         run_suite('loop', output, output / 'manual_test.exe',
                   ['empty', 'defaults', 'explicit', 'interpolation', 'transition',
                    'transition_parameters', 'first_route_failure', 'interpolation_failure',
-                   'transition_route_failure', 'fractional_stop', 'reentry'])
+                   'transition_route_failure', 'fractional_stop', 'reentry',
+                   'timing_moving', 'timing_paused', 'timing_roll_again', 'timing_leave_zone',
+                   'timing_bad_gps', 'timing_clock_backwards', 'timing_gap', 'timing_boundary',
+                   'timing_switch_stop'])
 
         # Strategy files: the complete production manual.cpp with its real json.hpp;
         # only SDK types, logger and the SimOne install directory are replaced.

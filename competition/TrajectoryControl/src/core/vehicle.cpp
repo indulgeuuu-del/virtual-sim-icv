@@ -47,17 +47,16 @@ bool MainVehicle::update(int timeoutFrames)
 	pLight->signalLights = presetLight; // 车灯
 
 	// 获取主车 GPS 信息
-	if (!SimOneAPI::GetGps(id, pGps.get()) && frameCount < timeoutFrames) {
-		globalLogger(Logger::Color::BrightMagenta) << "正在获取主车 GPS 信息 ...";
-		//std::this_thread::sleep_for(std::chrono::milliseconds(100));
-	}
-	else
+	if (!SimOneAPI::GetGps(id, pGps.get()))
 	{
-		if (!FlagType::isMainVehicleInitialized)
-		{
-			FlagType::isMainVehicleInitialized = true;
-			globalLogger(Logger::Color::BrightMagenta) << "主车 GPS 初始化成功";
-		}
+		globalLogger(Logger::Color::BrightMagenta) << (frameCount < timeoutFrames
+			? "正在获取主车 GPS 信息 ..." : "主车 GPS 更新失败，不能使用本帧数据");
+		return false;
+	}
+	if (!FlagType::isMainVehicleInitialized)
+	{
+		FlagType::isMainVehicleInitialized = true;
+		globalLogger(Logger::Color::BrightMagenta) << "主车 GPS 初始化成功";
 	}
 
 	// 计算主车的详细参数

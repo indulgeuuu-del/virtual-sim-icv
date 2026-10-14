@@ -22,6 +22,9 @@ LOOP_TESTS = (
     'empty', 'defaults', 'explicit', 'interpolation', 'transition',
     'transition_parameters', 'first_route_failure', 'interpolation_failure',
     'transition_route_failure', 'fractional_stop', 'reentry',
+    'timing_moving', 'timing_paused', 'timing_roll_again', 'timing_leave_zone',
+    'timing_bad_gps', 'timing_clock_backwards', 'timing_gap', 'timing_boundary',
+    'timing_switch_stop',
 )
 OUTPUT_TESTS = (
     'output_stop_forward', 'output_stop_reverse', 'output_stop_slide',
@@ -56,7 +59,7 @@ def main():
     )
     report = {'sdk_build_verified': False, 'platform_run_verified': False,
               'official_score_verified': False,
-              'scope': 'extracted geometry; full strategy loop and drive body; real pursuit/PID/curvature',
+              'scope': 'extracted geometry and GPS-update prefix; full strategy loop and drive body; real pursuit/PID/curvature',
               'limitations': 'map/API/frame-input fixtures; no full update(), SDK, vehicle dynamics or scoring',
               'tests': {}, 'passed': False}
     try:
@@ -66,6 +69,10 @@ def main():
                                                 args.revision + '^{commit}'], cwd=root, text=True).strip()
         raw_sources = {name: (subprocess.check_output(['git', 'show', f'{revision}:competition/{name}'], cwd=root)
                               if revision else (base / name).read_bytes()) for name in source_names}
+        if b'StopController.h' in raw_sources['TrajectoryControl/src/main_manual.cpp']:
+            name = 'util/StopController.h'
+            raw_sources[name] = (subprocess.check_output(['git', 'show', f'{revision}:competition/{name}'], cwd=root)
+                                 if revision else (base / name).read_bytes())
         sources = {}
         for name, raw in raw_sources.items():
             try:
@@ -76,6 +83,8 @@ def main():
         inputs = [
             Path(__file__), root / 'tests/cpp/manual_stub/main.h',
             root / 'tests/cpp/manual_stub/test_main.cpp', root / 'tests/cpp/drive_output_test.cpp',
+            root / 'tests/cpp/manual_stub/test_stop_timing.cpp',
+            root / 'tests/cpp/gps_update_gate.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
         report['source_sha256'] = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -95,10 +104,19 @@ def main():
         if harness.count('// @PRODUCTION_GEOMETRY@') != 1:
             raise ValueError('missing geometry insertion point')
         (output / 'geometry.cpp').write_bytes(harness.replace('// @PRODUCTION_GEOMETRY@', geometry).encode('utf-8'))
+        gps_prefix = between(sources['TrajectoryControl/src/core/vehicle.cpp'],
+                             'bool MainVehicle::update(', '// 计算主车的详细参数')
+        gps_prefix += '\n++processed; return FlagType::isMainVehicleInitialized;\n}\n'
+        gps_harness = read_source(root / 'tests/cpp/gps_update_gate.cpp')
+        if gps_harness.count('// @GPS_PREFIX@') != 1:
+            raise ValueError('missing GPS prefix insertion point')
+        (output / 'gps_gate.cpp').write_bytes(gps_harness.replace('// @GPS_PREFIX@', gps_prefix).encode('utf-8'))
 
         drive_dir = output / 'drive'
         drive_dir.mkdir(exist_ok=True)
-        for name in ('main.h', 'test_main.cpp'):
+        if 'util/StopController.h' in sources:
+            (drive_dir / 'StopController.h').write_bytes(sources['util/StopController.h'].encode('utf-8'))
+        for name in ('main.h', 'test_main.cpp', 'test_stop_timing.cpp'):
             shutil.copyfile(root / 'tests/cpp/manual_stub' / name, drive_dir / name)
         shutil.copyfile(root / 'tests/cpp/drive_output_test.cpp', drive_dir / 'drive_output_test.cpp')
         (drive_dir / 'main_manual.cpp').write_bytes(sources['TrajectoryControl/src/main_manual.cpp'].encode('utf-8'))
@@ -145,6 +163,8 @@ def main():
                     'passed': result.returncode == 0, 'output': (result.stdout + result.stderr).strip()}
 
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
+        compile_run(output, ['gps_gate.cpp'], ['initial_failure', 'late_failure', 'transient_failure',
+                                              'success', 'recovery'], 'gps_gate')
         compile_run(drive_dir, ['main_manual.cpp', 'drive.cpp', 'test_main.cpp'],
                     LOOP_TESTS + OUTPUT_TESTS, 'drive', ['/DTEST_REAL_DRIVE'])
         report['passed'] = bool(report['tests']) and all(t['passed'] for t in report['tests'].values())

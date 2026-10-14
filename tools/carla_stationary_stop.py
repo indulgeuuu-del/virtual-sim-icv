@@ -1,7 +1,8 @@
 """Stop behind a stationary vehicle on a verified straight Town01 lane.
 
 Exclusive local CARLA server required: loads Town01 if necessary.
-Uses ground-truth vehicle boxes, not competition sensor input or legacy code.
+Uses ground-truth vehicle boxes and the competition C++ stop/dwell controller.
+Approach-speed and throttle/brake adaptation remain specific to this CARLA experiment.
 """
 
 import argparse
@@ -13,6 +14,27 @@ import math
 from pathlib import Path
 import queue
 import time
+
+if __package__:
+    from .competition_stop import StopController
+else:
+    from competition_stop import StopController
+
+
+def observed_dwell(samples, stop_gap, max_gap=0.25):
+    """Independent measurement from logged vehicle states, not controller output."""
+    end = start = None
+    for state in reversed(samples):
+        if (not all(math.isfinite(state[key]) for key in ('time', 'speed_mps', 'gap_m')) or
+                abs(state['speed_mps']) > 0.1 or abs(state['gap_m'] - stop_gap) > 0.5):
+            break
+        stamp = state['time']
+        if not math.isfinite(stamp) or (start is not None and not 0 <= start - stamp <= max_gap):
+            break
+        if end is None:
+            end = stamp
+        start = stamp
+    return 0.0 if end is None else end - start
 
 
 def projected_gap(ego_points, lead_points, axis):
@@ -44,15 +66,21 @@ def parse_args():
     parser.add_argument('--gap', type=float, default=25.0, help='Initial body gap in m')
     parser.add_argument('--stop-gap', type=float, default=2.0, help='Desired final body gap in m')
     parser.add_argument('--timeout', type=float, default=60.0, help='Simulation seconds')
+    parser.add_argument('--dwell-seconds', type=float, default=2.0, help='Continuous observed standstill in simulation seconds')
+    parser.add_argument('--exclusive-dwell', action='store_true', help='Require strictly more than dwell-seconds')
+    parser.add_argument('--fixed-delta-seconds', type=float, default=0.05, help='Simulation step, 0.02..0.1 seconds')
     parser.add_argument('--no-realtime', action='store_true', help='Run without wall-clock pacing')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
-    if not all(math.isfinite(v) for v in (args.speed_kmh, args.gap, args.stop_gap, args.timeout)):
+    if not all(math.isfinite(v) for v in (args.speed_kmh, args.gap, args.stop_gap, args.timeout,
+                                         args.dwell_seconds, args.fixed_delta_seconds)):
         parser.error('Numeric arguments must be finite')
     if not 1 <= args.speed_kmh <= 30 or not 1 <= args.stop_gap <= 5:
         parser.error('Supported speed: 1..30 km/h; stop gap: 1..5 m')
     if not args.stop_gap + 5 <= args.gap <= 65 or not 5 <= args.timeout <= 120:
         parser.error('Initial gap: stop-gap+5..65 m; timeout: 5..120 s')
+    if not 0 < args.dwell_seconds < args.timeout or not 0.02 <= args.fixed_delta_seconds <= 0.1:
+        parser.error('Dwell must be >0 and <timeout; simulation step must be 0.02..0.1 s')
     if args.output is None:
         args.output = Path('work/carla') / datetime.now().strftime('stationary-stop-%Y%m%d-%H%M%S-%f')
     if args.output.exists() and (not args.output.is_dir() or any(args.output.iterdir())):
@@ -66,12 +94,20 @@ def run(args):
     args.output.mkdir(parents=True, exist_ok=True)
     actors, rows, collisions = [], [], []
     world = original = None
+    shared = None
+    dt = args.fixed_delta_seconds
     report = dict(passed=False, competition_verified=False, input_source='CARLA ground truth',
                   parameters={k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
                   source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
     client = carla.Client('127.0.0.1', 2000)
     client.set_timeout(10.0)
     try:
+        shared = StopController(args.dwell_seconds, exclusive=args.exclusive_dwell)
+        report.update(controller='competition/util/StopController.h via C ABI',
+                      controller_build=shared.build,
+                      acceptance=dict(stationary_speed_mps=0.1, gap_error_m=0.5,
+                                      dwell_seconds=args.dwell_seconds, exclusive=args.exclusive_dwell,
+                                      scope='auxiliary CARLA experiment, not official scoring'))
         report.update(client_version=client.get_client_version(), server_version=client.get_server_version())
         if report['client_version'] != '0.9.15' or report['server_version'] != '0.9.15':
             raise RuntimeError('This experiment requires CARLA client and server 0.9.15')
@@ -86,7 +122,7 @@ def run(args):
         original = world.get_settings()
         settings = world.get_settings()
         settings.synchronous_mode = True
-        settings.fixed_delta_seconds = 0.05
+        settings.fixed_delta_seconds = dt
         world.apply_settings(settings)
         road_map = world.get_map()
         library = world.get_blueprint_library()
@@ -152,7 +188,7 @@ def run(args):
         ego_vertices = [(v.x, v.y, v.z) for v in ego.bounding_box.get_world_vertices(et)]
         lead_vertices = [(v.x, v.y, v.z) for v in lead.bounding_box.get_world_vertices(lt)]
         # One camera warm-up tick follows, so allow for that forward travel.
-        correction = args.gap + cruise * 0.05 - projected_gap(ego_vertices, lead_vertices, axis)
+        correction = args.gap + cruise * dt - projected_gap(ego_vertices, lead_vertices, axis)
         lt.location += carla.Location(*(v * correction for v in axis))
         lead.set_transform(lt)
         lead_origin = lt.location
@@ -197,13 +233,13 @@ def run(args):
         first = measure(snapshot)
         report.update(map=road_map.name, vehicle=ego.type_id, initial=first,
                       ego_box_extent=dict(x=ego.bounding_box.extent.x, y=ego.bounding_box.extent.y),
-                      road_id=wp.road_id, lane_id=wp.lane_id, fixed_delta_seconds=0.05)
+                      road_id=wp.road_id, lane_id=wp.lane_id, fixed_delta_seconds=dt)
         if abs(first['gap_m'] - args.gap) > 0.5 or abs(first['speed_mps'] - cruise) > 0.5:
             raise RuntimeError('Initial gap or speed outside experiment tolerance')
         print(f"Initial: {first['speed_mps'] * 3.6:.2f} km/h, body gap {first['gap_m']:.2f} m", flush=True)
-        held = 0
-        latched = braking_saved = False
-        for step in range(round(args.timeout / 0.05)):
+        braking_saved = False
+        stop = None
+        for step in range(round(args.timeout / dt)):
             started = time.monotonic()
             state = measure(snapshot)
             if state['gap_m'] <= 0 or collisions:
@@ -212,22 +248,29 @@ def run(args):
                 raise RuntimeError('Vehicle left the supported straight-line corridor')
             if state['lead_displacement_m'] > 0.05:
                 raise RuntimeError('Lead vehicle moved')
-            target, throttle, brake, hold = stop_command(state['gap_m'], state['speed_mps'], cruise, args.stop_gap)
-            latched = latched or hold
-            if latched:
-                target, throttle, brake = 0.0, 0.0, 1.0
+            target, throttle, brake, _ = stop_command(state['gap_m'], state['speed_mps'], cruise, args.stop_gap)
+            # The front car remains present: ready means dwell completed, not permission to drive into it.
+            stop = shared.step(state['time'], state['speed_mps'],
+                               -0.5 <= state['gap_m'] - args.stop_gap <= 0.15,
+                               target, release_allowed=False)
+            target = stop.target_speed
+            if stop.phase != 'approaching':
+                throttle, brake = 0.0, 1.0
+            if stop.phase == 'invalid':
+                raise RuntimeError('Shared stop controller rejected discontinuous or invalid frame input')
             ego.apply_control(carla.VehicleControl(throttle=throttle, brake=brake))
             world.get_spectator().set_transform(camera.get_transform())
             frame = world.tick(20.0)
             after = world.get_snapshot()
             result = measure(after)
             rows.append(dict(**state, target_speed_mps=target, throttle=throttle, brake=brake,
+                             stop_phase=stop.phase, controller_held_seconds=stop.held_seconds,
+                             dwell_ready=stop.ready, result_time=result['time'],
                              result_frame=frame, result_gap_m=result['gap_m'], result_speed_mps=result['speed_mps']))
-            held = held + 1 if latched and result['speed_mps'] < 0.1 else 0
             name = 'start.png' if step == 0 else None
             if brake > 0.05 and not braking_saved:
                 name, braking_saved = 'braking.png', True
-            if held >= 40:
+            if stop.ready:
                 name = 'stopped.png'
             if name:
                 save_image(frame, name)
@@ -235,19 +278,22 @@ def run(args):
                 while not images.empty():
                     images.get_nowait()
             if step % 20 == 0:
-                print(f"t={step * 0.05:5.1f}s gap={result['gap_m']:6.2f}m speed={result['speed_mps'] * 3.6:5.2f}km/h target={target * 3.6:5.2f}", flush=True)
+                print(f"t={step * dt:5.1f}s gap={result['gap_m']:6.2f}m speed={result['speed_mps'] * 3.6:5.2f}km/h phase={stop.phase} held={stop.held_seconds:.2f}s", flush=True)
             snapshot = after
             if not args.no_realtime:
-                time.sleep(max(0.0, 0.05 - (time.monotonic() - started)))
-            if held >= 40:
+                time.sleep(max(0.0, dt - (time.monotonic() - started)))
+            if stop.ready:
                 break
         final = measure(snapshot)
-        report.update(final=final, frames=len(rows), stop_held_seconds=held * 0.05,
+        observed = observed_dwell(rows + [final], args.stop_gap)
+        duration_ok = observed > args.dwell_seconds if args.exclusive_dwell else observed >= args.dwell_seconds
+        report.update(final=final, frames=len(rows), stop_held_seconds=observed,
+                      controller_held_seconds=stop.held_seconds if stop else 0,
                       elapsed_sim_seconds=final['time'] - first['time'],
                       min_gap_m=min([first['gap_m']] + [row['result_gap_m'] for row in rows]),
                       max_lateral_m=max(abs(row['lateral_m']) for row in rows),
                       stop_error_m=final['gap_m'] - args.stop_gap,
-                      passed=(held >= 40 and abs(final['gap_m'] - args.stop_gap) <= 0.5
+                      passed=(stop is not None and stop.ready and duration_ok and abs(final['gap_m'] - args.stop_gap) <= 0.5
                               and final['gap_m'] > 0 and not collisions))
         if not report['passed']:
             report['error'] = 'Timeout or final gap outside +/-0.5 m acceptance tolerance'
@@ -255,6 +301,8 @@ def run(args):
         report['passed'] = False
         report['error'] = f'{type(exc).__name__}: {exc}'
     finally:
+        if shared is not None:
+            shared.close()
         client.set_timeout(5.0)
         cleanup_errors = []
         for actor in reversed(actors):

@@ -86,15 +86,18 @@ struct Observation {
 inline std::vector<Observation> observations;
 inline std::vector<SSD::SimPoint3D> initialPath, targetPath;
 inline std::vector<int> validWayPoints, obstacleList, stopLineList;
+struct SimOne_Data_Gps {
+    double posX = 0, posY = 0, posZ = 0, velX = 0, velY = 0, velZ = 0, oriZ = 0;
+    long long timestamp = 0;
+};
+inline auto pGps = std::make_unique<SimOne_Data_Gps>();
+struct FrameInput { double x, speed; long long timestamp; bool valid = true; };
+inline std::vector<FrameInput> frameInputs;
 // The real-drive build retains the production drive, pursuit, PID and curvature
 // bodies. update() supplies deterministic frame input; it is not an SDK test.
 #ifdef TEST_REAL_DRIVE
 using SimOne_Data_Control = Control;
-struct SimOne_Data_Gps {
-    double posX = 0, posY = 0, posZ = 0, velX = 0, velY = 0, velZ = 0, oriZ = 0;
-};
 struct SignalLights { int signalLights = 0; };
-inline auto pGps = std::make_unique<SimOne_Data_Gps>();
 inline auto pLight = std::make_unique<SignalLights>();
 inline int lightSends = 0, lastLights = -1, caseIdx = 41;
 inline size_t ppTargetIndex = 0;
@@ -105,19 +108,27 @@ namespace FlagType { inline bool isManualTrackMode = true; }
 struct MainVehicle {
     const char* id = "0";
     SSD::SimPoint3D pt;
-#ifdef TEST_REAL_DRIVE
     bool useDefaultPath = true, reverse = false;
     float speed = 0, steeringOffset = 0;
-    void update() {
+    bool update() {
+        const FrameInput input = frameInputs.empty()
+            ? FrameInput{pt.x, speed, static_cast<long long>(std::llround(now * 1000))}
+            : frameInputs.at(waits - 1);
+        if (!input.valid) return false;
+        pt.x = input.x; speed = static_cast<float>(input.speed);
+        pGps->timestamp = input.timestamp;
+#ifdef TEST_REAL_DRIVE
         pControl->throttle = caseTargetSpeed;
         pControl->steering = 0;
         pControl->gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
         pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
         pGps->posX = pt.x; pGps->posY = pt.y; pGps->posZ = pt.z;
+#endif
+        return true;
     }
+#ifdef TEST_REAL_DRIVE
     void drive();
 #else
-    void update() {}
     void drive() {
         if (targetPath.size() < 2) throw std::runtime_error("drive without path");
         observations.push_back({pControl->throttle, steerKpUse, targetPath.back().x, true});
@@ -135,7 +146,7 @@ inline double planarDistance(const SSD::SimPoint3D& a, const SSD::SimPoint3D& b)
 }
 }
 inline float getDistS(const SSD::SimPoint3D& a, const SSD::SimPoint3D& b) {
-    return static_cast<float>(UtilMath::planarDistance(a,b));
+    return static_cast<float>(b.x-a.x); // signed lane-s distance, as in process.cpp
 }
 // A failed call leaves partial garbage in out, so callers must not trust it.
 inline bool routeCall(const std::vector<SSD::SimPoint3D>& in, std::vector<SSD::SimPoint3D>& out) {

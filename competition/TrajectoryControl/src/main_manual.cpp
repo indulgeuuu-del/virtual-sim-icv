@@ -1,5 +1,7 @@
 ﻿#include "main.h"
 
+#include "StopController.h"
+
 int main_manual(void)
 {
 	if (strategyPoint.empty())
@@ -44,9 +46,9 @@ int main_manual(void)
 	};
 
 	double stopTime;
-	bool isStopping = false;
+	competition::StopController stopController;
+	int stopControllerIdx = -1;
 	std::set<int> stoppedPointIds; // 记录已经处理过的点编号
-	std::unordered_map<int, float> brakingStartDists; // 为了使得在每个寻迹点前只会打下一个标签
 
 	while (true)
 	{
@@ -58,7 +60,19 @@ int main_manual(void)
 		recordEvaluation(); // 更新 NEVC 系统评分
 
 		updateObstacleData(); // 更新障碍物参数
-		mainVehicle.update(); // 更新主车参数
+		if (!mainVehicle.update()) // GPS失败时不得沿用旧位置累计停车时间
+		{
+			stopController.invalidate();
+			pControl->throttle = 0;
+			pControl->steering = 0;
+			pControl->gear = mainVehicle.reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
+				: ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
+			pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
+			SimOneAPI::SetDrive(mainVehicle.id, pControl.get());
+			LOG << "GPS更新失败：停车并重置连续驻停计时";
+			SimOneAPI::NextFrame(frame);
+			continue;
+		}
 
 		waitInitial(); // 等待仿真平台初始化完成
 
@@ -67,68 +81,43 @@ int main_manual(void)
 		obstacleList.clear();
 		stopLineList.clear();
 
-		static bool isBraking = false;
-		static bool notUpdateNextPt = false;
 		float distNextPoint = 0.0f; // 到下一个循迹点之间的 ST 距离
 
 		distNextPoint = getDistS(mainVehicle.pt, strategyPoint[currentIdx].Pos); // 到下一个循迹点之间的 ST 距离
 
 		/* 如果 [dat1] == -1，[dat2] = defaut，否则 [dat2] = [dat1] */
 #define JudgeJsonData(DATA1, DATA2, DATA3) if (strategyPoint[currentIdx].DATA1 == -1) DATA2 = DATA3; else DATA2 = strategyPoint[currentIdx].DATA1
-		JudgeJsonData(kp, steerKpUse, steerKp);
-		JudgeJsonData(stopTime, stopTime, -1);
-
-		if (stopTime <= 0 || stoppedPointIds.count(currentIdx) > 0) // 无需停止 || 已停止过该点
-		{
-			isStopping = false;
+		auto applyPointControl = [&]() {
+			JudgeJsonData(kp, steerKpUse, steerKp);
+			JudgeJsonData(stopTime, stopTime, -1);
 			JudgeJsonData(speed, pControl->throttle, caseTargetSpeed);
-		}
-		else // 否则，计算制动距离 d0 并判断是否进入停止区间
-		{
-			SSD::SimPoint3D& vehiclePoint = mainVehicle.pt;
-			SSD::SimPoint3D& stopPoint = strategyPoint[currentIdx].Pos;
-			static std::string timerName;
-
-			/* 如果当前不处于停车状态，且已到达停车点 */
-			if (!isStopping && UtilMath::planarDistance(vehiclePoint, stopPoint) < achieveThres)
-			{
-				isStopping = true;
-				timerName = "stopTimer" + std::to_string(currentIdx);
-				timer.mark(timerName); // 标记定时器，开始停止状态
-				LOG << "○ 停止的追踪点 [" << currentIdx << "] 开始停止，stopTime = " << stopTime << " 秒";
+			if (stopTime <= 0 || stoppedPointIds.count(currentIdx) > 0) return false;
+			if (stopControllerIdx != currentIdx) {
+				stopController.reset(stopTime);
+				stopControllerIdx = currentIdx;
 			}
-			/* 如果当前正处于停车状态，且已到达停止时间 */
-			else if (isStopping && timer.isTriggered(timerName, (float)stopTime, Timer::Unit::Seconds))
-			{
-				isStopping = false;
-				timer.removeMark(timerName);
-				stoppedPointIds.insert(currentIdx); // 记录已经停止过该点
-				JudgeJsonData(speed, pControl->throttle, caseTargetSpeed); // 重新启动
-				LOG << "○ 停止时间到，重新启动";
-			}
-
-			/* 根据是否处于停车状态来决定速度 */
-			if (isStopping)
-			{
-				pControl->throttle = 0; // 停止状态，油门归零
-				LOG << "○ 停车中，当前已停止 " << timer.sinceMark(timerName) << " 毫秒";
-			}
-			else // 不在停止区域范围内，重置状态
-			{
-				isStopping = false;
-				JudgeJsonData(speed, pControl->throttle, caseTargetSpeed);
-			}
-		}
+			// SimOne_Data::timestamp is milliseconds (vendor API reference).
+			// https://simone-docs.51sim.com/SimOneCpp/struct_sim_one___data/index.html
+			// .stg duration is a minimum; mapping to each 2027 rule is separate.
+			const auto stop = stopController.update(pGps->timestamp * 0.001, mainVehicle.speed,
+				UtilMath::planarDistance(mainVehicle.pt, strategyPoint[currentIdx].Pos) <= achieveThres,
+				pControl->throttle, true);
+			pControl->throttle = stop.targetSpeed;
+			if (stop.ready) stoppedPointIds.insert(currentIdx);
+			LOG << "驻停状态=" << static_cast<int>(stop.phase) << " 连续停稳=" << stop.heldSeconds << " 秒";
+			return !stop.ready;
+		};
+		const bool stopPending = applyPointControl();
 
 		/* 若当前点已接近目标点（≤5m），且后续还有点，准备切换到下一个循迹点 */
 		/* 还要求停止的过程中不允许切换到下一个点；首帧的 pendingIdx 已是 0，不会跳过第一个点 */
-		if (pendingIdx < 0 && distNextPoint <= achieveThres && currentIdx + 1 < strategyPoint.size() && !notUpdateNextPt && !isStopping)
+		if (pendingIdx < 0 && distNextPoint <= achieveThres && currentIdx + 1 < strategyPoint.size() && !stopPending)
 		{
 			pendingIdx = currentIdx + 1;
 		}
 
 		/* 建立到待切换点的路径：成功才切换编号；失败保持原编号并停车，下一帧重试 */
-		if (pendingIdx >= 0 && !notUpdateNextPt)
+		if (pendingIdx >= 0)
 		{
 			if (buildPathTo(pendingIdx))
 			{
@@ -138,8 +127,8 @@ int main_manual(void)
 				globalLogger(Logger::Color::BrightGreen) << "※ 切换到下一个循迹点，下一个循迹点的编号：" << currentIdx;
 				if (switched) // 切点当帧就使用新点的速度和转向参数
 				{
-					JudgeJsonData(kp, steerKpUse, steerKp);
-					JudgeJsonData(speed, pControl->throttle, caseTargetSpeed);
+					distNextPoint = getDistS(mainVehicle.pt, strategyPoint[currentIdx].Pos);
+					applyPointControl(); // 同一帧处理新点的停车义务
 				}
 			}
 			else

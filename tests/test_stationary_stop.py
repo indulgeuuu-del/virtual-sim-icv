@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from tools.carla_stationary_stop import projected_gap, stop_command
+from tools.carla_stationary_stop import projected_gap, stop_command, observed_dwell
 
 
 class StationaryStopTests(unittest.TestCase):
@@ -35,6 +35,27 @@ class StationaryStopTests(unittest.TestCase):
         for value in (math.nan, math.inf, -math.inf):
             with self.assertRaises(ValueError):
                 stop_command(value, 2, 3, 2)
+
+    def test_dwell_is_measured_from_vehicle_states(self):
+        states = [dict(time=i/10, speed_mps=0, gap_m=2.1) for i in range(11)]
+        self.assertEqual(observed_dwell(states, 2), 1)
+        states[6]['speed_mps'] = 0.2
+        self.assertAlmostEqual(observed_dwell(states, 2), 0.3)
+        states[-1]['gap_m'] = 3
+        self.assertEqual(observed_dwell(states, 2), 0)
+
+    def test_dwell_does_not_count_pauses_or_missing_intervals(self):
+        self.assertEqual(observed_dwell([dict(time=1, speed_mps=0, gap_m=2)]*30, 2), 0)
+        self.assertEqual(observed_dwell([dict(time=t, speed_mps=0, gap_m=2) for t in (0, 1)], 2), 0)
+
+    def test_dwell_rejects_invalid_vehicle_observations(self):
+        for field in ('time', 'speed_mps', 'gap_m'):
+            for value in (math.nan, math.inf, -math.inf):
+                with self.subTest(field=field, value=value):
+                    states = [dict(time=t, speed_mps=0, gap_m=2) for t in (0, 0.1, 0.2)]
+                    states[-1][field] = value
+                    self.assertEqual(observed_dwell(states, 2), 0)
+        self.assertEqual(observed_dwell([dict(time=t, speed_mps=-1, gap_m=2) for t in (0, 0.1)], 2), 0)
 
 
 if __name__ == '__main__':
