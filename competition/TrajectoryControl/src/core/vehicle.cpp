@@ -275,7 +275,9 @@ void MainVehicle::drive(void)
 
 	if (reverse) /* 倒车模式 */
 	{
-		pControl->throttle = 3.0f;
+		// 3m/s仅保留为旧倒车上限，不抬高上游减速请求；Percent保持百分比语义。
+		if (pControl->throttleMode == ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed)
+			pControl->throttle = std::min<double>(pControl->throttle, 3.0);
 		pControl->steering = 0.0f;
 		pControl->gear = ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse;
 	}

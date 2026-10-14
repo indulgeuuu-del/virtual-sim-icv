@@ -45,6 +45,7 @@ OUTPUT_TESTS = (
     'output_invalid_nan', 'output_invalid_infinite', 'output_invalid_negative',
     'output_invalid_reverse', 'output_invalid_slide', 'output_invalid_percent',
     'output_invalid_steering', 'output_send_failure',
+    'output_reverse_slow', 'output_reverse_percent', 'output_reverse_recover',
 )
 
 

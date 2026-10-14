@@ -13,6 +13,20 @@ bool driveOutputTest(const std::string& name) {
     steerKpUse = steerKp;
     steerKdUse = steerKd;
     pLight->signalLights = 4;
+    if(name=="output_reverse_slow" || name=="output_reverse_percent" || name=="output_reverse_recover") {
+        mainVehicle.reverse=true;
+        const bool percent=name=="output_reverse_percent";
+        if(percent) pControl->throttleMode=Mode::ESimOne_Throttle_Mode_Percent;
+        pControl->throttle=percent ? 0.5 : 1.0;
+        mainVehicle.drive();
+        require(obs(0).speed==(percent ? 0.5 : 1.0),"reverse raised low speed or changed percent units");
+        require(obs(0).gear==Gear::ESimOne_Gear_Mode_Reverse,"reverse gear lost");
+        if(name=="output_reverse_recover") {
+            pControl->throttle=8; mainVehicle.drive();
+            require(obs(1).speed==3,"reverse upper cap or recovery changed");
+        }
+        return true;
+    }
     if(name.rfind("output_invalid_",0)==0 || name=="output_send_failure") {
         if(name=="output_send_failure") {
             controlSendOk=false;
