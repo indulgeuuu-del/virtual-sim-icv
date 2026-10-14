@@ -34,6 +34,9 @@ OUTPUT_TESTS = (
     'output_follow_stop', 'output_follow_slow', 'output_follow_stop_resume',
     'output_empty_path', 'output_short_path', 'output_empty_reverse',
     'output_empty_slide', 'output_empty_recovery', 'output_explicit_no_path',
+    'output_arbitration_stop', 'output_arbitration_reverse', 'output_arbitration_slide',
+    'output_arbitration_release', 'output_arbitration_disabled', 'output_arbitration_front',
+    'output_arbitration_left_front', 'output_arbitration_right_front',
 )
 
 
@@ -93,6 +96,7 @@ def main():
             root / 'tests/cpp/following_drive_support.cpp',
             root / 'tests/cpp/follow_input_stub/main.h', root / 'tests/cpp/follow_input_stub/test.cpp',
             root / 'tests/cpp/navigation_test.cpp',
+            root / 'tests/cpp/track_speed_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
         report['source_sha256'] = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -156,6 +160,17 @@ def main():
         cpp += 'double approximateCurvature(' + curvature_decl + ';\nstatic double dist3D(' + curvature
         cpp += '\n' + drive
         (drive_dir / 'drive.cpp').write_bytes(cpp.encode('utf-8'))
+        track = sources['TrajectoryControl/src/main_track.cpp']
+        speed_support = read_source(root / 'tests/cpp/track_speed_support.cpp')
+        speed_parts = {
+            '// @BEFORE_OVERTAKING@': between(track, '\t\t// 超车速度规划', '\t\tif (overtakeSwitcher.state)'),
+            '// @ARBITRATION_AND_FINAL_GUARD@': between(track, '\t\t\t// 1. LF、LB', '\t\tmainVehicle.drive();'),
+        }
+        for marker, code in speed_parts.items():
+            if speed_support.count(marker) != 1:
+                raise ValueError('missing speed arbitration insertion point')
+            speed_support = speed_support.replace(marker, code)
+        (drive_dir / 'track_speed.cpp').write_bytes(speed_support.encode('utf-8'))
 
         follow_dir = output / 'follow_input'
         follow_dir.mkdir(exist_ok=True)
@@ -214,7 +229,7 @@ def main():
         compile_run(output, ['navigation.cpp'], ['waypoint_failure', 'zero_waypoints', 'route_failure',
                     'empty_route', 'short_route', 'lane_failure', 'empty_lane', 'short_lane',
                     'route_success', 'lane_success', 'repeat', 'recovery'], 'navigation')
-        compile_run(drive_dir, ['main_manual.cpp', 'drive.cpp', 'following.cpp', 'test_main.cpp'],
+        compile_run(drive_dir, ['main_manual.cpp', 'drive.cpp', 'following.cpp', 'track_speed.cpp', 'test_main.cpp'],
                     LOOP_TESTS + OUTPUT_TESTS, 'drive', ['/DTEST_REAL_DRIVE'])
         compile_run(follow_dir, ['main_follow.cpp', 'support.cpp', 'test.cpp'],
                     ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',

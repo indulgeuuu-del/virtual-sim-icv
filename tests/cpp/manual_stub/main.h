@@ -93,6 +93,11 @@ struct SimOne_Data_Gps {
 inline auto pGps = std::make_unique<SimOne_Data_Gps>();
 struct FrameInput { double x, speed; long long timestamp; bool valid = true; bool obstacleValid = true; };
 inline std::vector<FrameInput> frameInputs;
+struct SpeedNeighborhood {
+    float vf=0,vb=0,vl=0,vr=0,vlf=0,vrf=0,vlb=0,vrb=0;
+    bool bf=false,bb=false,bl=false,br=false,blf=false,brf=false,blb=false,brb=false;
+};
+inline struct { bool state=true; } overtakeSwitcher;
 // The real-drive build retains the production drive, pursuit, PID and curvature
 // bodies. update() supplies deterministic frame input; it is not an SDK test.
 #ifdef TEST_REAL_DRIVE
@@ -106,6 +111,7 @@ inline std::vector<std::tuple<SSD::SimPoint3D, SSD::SimPoint3D>> slideConfig;
 namespace FlagType { inline bool isManualTrackMode = true; }
 #endif
 struct MainVehicle {
+    SpeedNeighborhood neighborhood;
     const char* id = "0";
     SSD::SimPoint3D pt;
     bool useDefaultPath = true, reverse = false;

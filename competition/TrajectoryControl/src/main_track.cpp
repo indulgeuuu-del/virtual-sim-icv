@@ -186,6 +186,9 @@ int main_track(void)
 		// 还需要处理那些在主车前方行驶的移动半停止线
 		// calculateOvertakingSpeed(obstacleList);
 
+		// 停止线等上游给出的停车义务，不能被后方车辆的加速建议覆盖。
+		const bool stopBeforeOvertaking = pControl->throttleMode == ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed
+			&& pControl->throttle == 0.0f;
 		if (overtakeSwitcher.state) /* 邻域超车 */
 		{
 			// 如果左前邻域有车，且主车轨迹的终点落在左前邻域内
@@ -556,8 +559,16 @@ int main_track(void)
 			{
 				pControl->throttle = std::min(mainVehicle.neighborhood.vb, mainVehicle.neighborhood.vf);
 			}
+			// 已判定与当前路径冲突的前方目标给出速度上界；侧后方建议不能抬高它。
+			if (mainVehicle.neighborhood.bf)
+				pControl->throttle = std::min<double>(pControl->throttle, mainVehicle.neighborhood.vf);
+			if (mainVehicle.neighborhood.blf)
+				pControl->throttle = std::min<double>(pControl->throttle, mainVehicle.neighborhood.vlf);
+			if (mainVehicle.neighborhood.brf)
+				pControl->throttle = std::min<double>(pControl->throttle, mainVehicle.neighborhood.vrf);
 		}
 
+		if (stopBeforeOvertaking) pControl->throttle = 0.0f;
 		mainVehicle.drive();
 
 		for (size_t i = 0, ie = stopLineList.size(); i < ie; ++i)
