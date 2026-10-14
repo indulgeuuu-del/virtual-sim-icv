@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <memory>
 #include "SSD/SimPoint2D.h"
 #include "SimOneHDMapAPI.h"
@@ -20,21 +20,21 @@ public:
 	float vx, vy, vz;
 	float yaw;
 
-	double sRelativeToVehicle, tRelativeToVehicle; // Ïà¶ÔÓÚÖ÷³µËùÔÚ³µµÀµÄ s¡¢t ×ø±ê
-	double sRelativeToLane, tRelativeToLane; // Ïà¶ÔÓÚ×ÔÉíËùÔÚ³µµÀµÄ s¡¢t ×ø±ê
-	double sRelativeToRoad, tRelativeToRoad; // Ïà¶ÔÓÚ×ÔÉíËùÔÚµÀÂ·µÄ s¡¢t ×ø±ê
+	double sRelativeToVehicle, tRelativeToVehicle; // ç›¸å¯¹äºä¸»è½¦æ‰€åœ¨è½¦é“çš„ sã€t åæ ‡
+	double sRelativeToLane, tRelativeToLane; // ç›¸å¯¹äºè‡ªèº«æ‰€åœ¨è½¦é“çš„ sã€t åæ ‡
+	double sRelativeToRoad, tRelativeToRoad; // ç›¸å¯¹äºè‡ªèº«æ‰€åœ¨é“è·¯çš„ sã€t åæ ‡
 	SSD::SimPoint3D pt;
 	SSD::SimPoint3D tl, tr, bl, br;
 
 	SSD::SimString laneID;
-	float laneAzimuth; // ÕÏ°­ÎïËùÔÚ³µµÀµÄ·½Î»½Ç
+	float laneAzimuth; // éšœç¢ç‰©æ‰€åœ¨è½¦é“çš„æ–¹ä½è§’
 	bool isSameLaneWithMainVehicle;
 	bool isSameRoadWithMainVehicle;
 	double laneWidth;
 	double roadWidth;
 
-	SSD::SimPoint3D leftLanePt, rightLanePt; // ÕÏ°­ÎïËùÊôµÄ³µµÀµÄ×óÓÒ±ß½çµã
-	SSD::SimPoint3D leftRoadPt, rightRoadPt; // ÕÏ°­ÎïËùÊôµÄµÀÂ·µÄ×óÓÒ±ß½çµã
+	SSD::SimPoint3D leftLanePt, rightLanePt; // éšœç¢ç‰©æ‰€å±çš„è½¦é“çš„å·¦å³è¾¹ç•Œç‚¹
+	SSD::SimPoint3D leftRoadPt, rightRoadPt; // éšœç¢ç‰©æ‰€å±çš„é“è·¯çš„å·¦å³è¾¹ç•Œç‚¹
 
 	//const Prediction* predictionPtr;
 	std::shared_ptr<Prediction> predictionPtr;
@@ -43,13 +43,13 @@ public:
 public:
 	Obstacle() : predictionPtr(std::make_shared<Prediction>()) {}
 
-	// Í¨¹ı SimOne_Data_Obstacle_Entry À´¹¹Ôì
+	// é€šè¿‡ SimOne_Data_Obstacle_Entry æ¥æ„é€ 
 	Obstacle(const SimOne_Data_Obstacle_Entry& obstacle);
 
-	// Í¨¹ıË÷ÒıÀ´¹¹Ôì
+	// é€šè¿‡ç´¢å¼•æ¥æ„é€ 
 	Obstacle(size_t index);
 
-	// Í¨¹ıË÷ÒıÁĞ±íÀ´¹¹Ôì
+	// é€šè¿‡ç´¢å¼•åˆ—è¡¨æ¥æ„é€ 
 	Obstacle(const std::vector<size_t>& index);
 };
 
@@ -70,7 +70,7 @@ extern void groupObstacleByDist(const std::vector<size_t>& indexList, float thre
 extern void groupObstacleByS(const std::vector<Obstacle>& obstacleList, const std::vector<size_t>& indexList, float threshold, std::vector<std::vector<size_t>>& groups);
 inline void groupObstacleByS(const std::vector<Obstacle>& obstacleList, float threshold, std::vector<std::vector<size_t>>& groups)
 {
-	std::vector<size_t> consideredIdx; // °´ S ·Ö×éÊ±¹ØĞÄµÄË÷ÒıÓĞÄÄĞ©£¬Ä¬ÈÏËùÓĞË÷Òı¶¼¹ØĞÄ
+	std::vector<size_t> consideredIdx; // æŒ‰ S åˆ†ç»„æ—¶å…³å¿ƒçš„ç´¢å¼•æœ‰å“ªäº›ï¼Œé»˜è®¤æ‰€æœ‰ç´¢å¼•éƒ½å…³å¿ƒ
 	for (size_t i = 0, ie = obstacleList.size(); i < ie; ++i) consideredIdx.push_back(i);
 	groupObstacleByS(obstacleList, consideredIdx, threshold, groups);
 }
@@ -93,23 +93,27 @@ inline void getObstacleRoadSidePosition(const SimOne_Data_Obstacle_Entry& obstac
 extern SSD::SimVector<HDMapStandalone::MObject> crosswalkList;
 extern bool isObstacleAmongCrosswalk(const SSD::SimPoint3D& tl, const SSD::SimPoint3D& tr, const SSD::SimPoint3D& bl, const SSD::SimPoint3D& br, const SSD::SimPoint3D& vertex1 = crosswalkList[0].boundaryKnots[0], const SSD::SimPoint3D& vertex2 = crosswalkList[0].boundaryKnots[2]);
 
-extern float lessThanLaneFactor; // Èç¹ûÕÏ°­ÎïµÄ¿í¶ÈĞ¡ÓÚ¸ÃÒò×Ó³ËÒÔ³µµÀ¿í¶È£¬ÔòÖ÷³µÔâÓö¸ÃÕÏ°­ÎïĞèÒª±äµÀ
-extern float moreThanRoadFactor; // Èç¹ûÕÏ°­ÎïµÄ¿í¶È´óÓÚ¸ÃÒò×Ó³ËÒÔµÀÂ·¿í¶È£¬ÔòÖ÷³µÔâÓö¸ÃÕÏ°­ÎïĞèÒªÍ£×ß
+extern float lessThanLaneFactor; // å¦‚æœéšœç¢ç‰©çš„å®½åº¦å°äºè¯¥å› å­ä¹˜ä»¥è½¦é“å®½åº¦ï¼Œåˆ™ä¸»è½¦é­é‡è¯¥éšœç¢ç‰©éœ€è¦å˜é“
+extern float moreThanRoadFactor; // å¦‚æœéšœç¢ç‰©çš„å®½åº¦å¤§äºè¯¥å› å­ä¹˜ä»¥é“è·¯å®½åº¦ï¼Œåˆ™ä¸»è½¦é­é‡è¯¥éšœç¢ç‰©éœ€è¦åœèµ°
 
-// Ö÷³µÔâÓö¸ÃÕÏ°­ÎïÊ±ÊÇ·ñĞèÒª±äµÀ£¬ÊÇ·ñĞèÒª´´½¨°ëÍ£Ö¹Ïß
+// ä¸»è½¦é­é‡è¯¥éšœç¢ç‰©æ—¶æ˜¯å¦éœ€è¦å˜é“ï¼Œæ˜¯å¦éœ€è¦åˆ›å»ºåŠåœæ­¢çº¿
 #define NEED_TO_CHANGE_LANES(OBSTACLE) ([](const Obstacle& obstacle) { if (obstacle.width < lessThanLaneFactor * obstacle.laneWidth) return true; if (obstacle.width > moreThanRoadFactor * obstacle.roadWidth) return false; return true; }(OBSTACLE))
 #define IS_SINGLE_STOPLINE NEED_TO_CHANGE_LANES
 
-// ¼ÆËãµ½Ö÷³µ×î½üµÄÕÏ°­Îï
+// è®¡ç®—åˆ°ä¸»è½¦æœ€è¿‘çš„éšœç¢ç‰©
 extern bool calculateNearestObstacle(const std::vector<Obstacle>& list, Obstacle& obstacle, double& distance);
 extern void findObstacleBehind(const std::vector<Obstacle>& list, std::vector<size_t>& behindIndexList);
 extern bool findNearestObstacleBehind(const std::vector<Obstacle>& list, const std::vector<size_t>& indexList, size_t& index, float& distance);
 
-// brief:¼ÆËã¸ú³µµÄËÙ¶È
-// param[in] obstacleListÕÏ°­ÎïÁĞ±í
-// param[in] index ³¡¾°±àºÅ
-// param[in] adaptiveFollowing ¸ú³µÀàµÄÊµÀı»¯¶ÔÏó
+// brief:è®¡ç®—è·Ÿè½¦çš„é€Ÿåº¦
+// param[in] obstacleListéšœç¢ç‰©åˆ—è¡¨
+// param[in] index åœºæ™¯ç¼–å·
+// param[in] adaptiveFollowing è·Ÿè½¦ç±»çš„å®ä¾‹åŒ–å¯¹è±¡
 extern float caculateFollowingSpeed(const std::vector<Obstacle>& obstacleList, int index);
+// Static target only: reference-distance minus this offset is longitudinal body gap.
+// Must describe the selected nearest target on the same axis; metres, finite >= 0.
+extern float calculateFollowingSpeedWithGeometry(const std::vector<Obstacle>& obstacleList,
+    int index, double staticReferenceOffset);
 
-// brief ¼ÆËã³¬³µËÙ¶È
+// brief è®¡ç®—è¶…è½¦é€Ÿåº¦
 extern void calculateOvertakingSpeed(std::vector<Obstacle>& obstacleList);

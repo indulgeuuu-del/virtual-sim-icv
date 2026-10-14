@@ -35,6 +35,15 @@ class StopAnalysisTests(unittest.TestCase):
         self.assertFalse(result['decomposition_available'])
         self.assertEqual(result['stop_request_episodes'], 0)
 
+    def test_explicit_geometry_is_used_in_attribution(self):
+        rows, final, model = self.fixture()
+        for row in rows:
+            row['static_reference_offset_m'] = 5
+        result = analyze_trace(rows, final, model, 2)
+        self.assertEqual(result['geometry_mismatch_m'], 0)
+        self.assertAlmostEqual(result['threshold_crossing_m'], 1.8)
+        self.assertAlmostEqual(result['decomposition_residual_m'], 0)
+
     def test_restart_prevents_single_stop_attribution(self):
         result = analyze_trace(*self.fixture((0, 3, 0)), desired=2)
         self.assertFalse(result['decomposition_available'])

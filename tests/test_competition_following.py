@@ -5,6 +5,38 @@ from tools.competition_following import FollowingController, extract
 
 
 class FollowingTests(unittest.TestCase):
+    def test_static_geometry_uses_body_clearance_without_changing_reference_coordinates(self):
+        c = self.controller()
+        # Same 2.4m body clearance and speed, two different reference geometries.
+        for offset in (4.0, 4.792, 7.0):
+            with self.subTest(offset=offset):
+                lead_s = 100 + 2.4 + offset
+                result = c.step(100, 3, [(lead_s, 0, 0, 1, 1)], static_reference_offset=offset)
+                self.assertEqual(result['target_speed'], 0)
+                self.assertAlmostEqual(result['selected_s'], lead_s)
+                self.assertEqual(c.step(100, 3, [(lead_s+10, 0, 0, 1, 1)],
+                    static_reference_offset=offset)['target_speed'], 3)
+        # The old 4.38046m offset is intentionally preserved by the legacy entry.
+        self.assertEqual(c.step(100, 3, [(107.192, 0, 0, 1, 1)])['target_speed'], 3)
+
+    def test_geometry_does_not_change_moving_following_or_legacy_default(self):
+        c = self.controller()
+        for distance in (1, 6, 8, 30, 60):
+            for speed in (0, 2, 8):
+                data = [(distance, 0, 0, 1, 1)]
+                self.assertEqual(c.step(0, speed, data),
+                    c.step(0, speed, data, static_reference_offset=4.38046))
+        for offset in (0, 4, 8):
+            data = [(45, 2, 2, 1, 1)]
+            self.assertEqual(c.step(0, 3, data)['target_speed'],
+                             c.step(0, 3, data, static_reference_offset=offset)['target_speed'])
+
+    def test_invalid_explicit_geometry_is_rejected(self):
+        c = self.controller()
+        for offset in (-1, math.nan, math.inf):
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                c.step(0, 3, [(10, 0, 0, 1, 1)], static_reference_offset=offset)
+
     def controller(self):
         obj = FollowingController()
         self.addCleanup(obj.close)

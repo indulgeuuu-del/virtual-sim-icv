@@ -634,8 +634,16 @@ bool findNearestObstacleBehind(const std::vector<Obstacle>& list, const std::vec
 }
 
 // 计算跟车的速度
-float caculateFollowingSpeed(const std::vector<Obstacle>& obstacleList, int index)
+float calculateFollowingSpeedWithGeometry(const std::vector<Obstacle>& obstacleList, int index,
+    double staticReferenceOffset)
 {
+    // Along the same longitudinal axis: reference distance - offset = body gap.
+    // Supply geometry of the selected target; never shift map coordinates to fit it.
+    if (!std::isfinite(staticReferenceOffset) || staticReferenceOffset < 0)
+    {
+        LOG << "Invalid static following reference offset; requesting stop";
+        return 0;
+    }
     Obstacle potentialObstacle;
     double minDistance;
     float speed = 3.0f;
@@ -648,7 +656,7 @@ float caculateFollowingSpeed(const std::vector<Obstacle>& obstacleList, int inde
             float d0 = 0.05272 * mainVehicle.speed * mainVehicle.speed + 0.06714 * mainVehicle.speed - 0.02188; // d0 是刹车距离
             LOG << "minDistance:" << minDistance;
             LOG << "d0:" << d0;
-            if ((minDistance - 4.38046) <= (d0 + distance_expect)) // d0 + x 表示要在停止线 x 米前停下来， - 4.38046 代表减去质心到车头的距离
+            if ((minDistance - staticReferenceOffset) <= (d0 + distance_expect))
             {
                 speed = 0; // 立即停止加速（刹车）
             }
@@ -666,6 +674,12 @@ float caculateFollowingSpeed(const std::vector<Obstacle>& obstacleList, int inde
         }
     }
     return speed;
+}
+
+float caculateFollowingSpeed(const std::vector<Obstacle>& obstacleList, int index)
+{
+    // Preserve inherited SimOne calibration until official geometry is verified.
+    return calculateFollowingSpeedWithGeometry(obstacleList, index, 4.38046);
 }
 
 // 计算超车速度（这个只能处理主车即将变道，而主车后方又有一辆快速行驶的对手车辆的情况，不能处理移动的半停止线）

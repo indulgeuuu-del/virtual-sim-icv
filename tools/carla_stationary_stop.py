@@ -67,6 +67,25 @@ def projected_gap(ego_points, lead_points, axis):
     return min(map(project, lead_points)) - max(map(project, ego_points))
 
 
+def reference_to_body_offset(ego_points, lead_points, ego_origin, lead_origin, axis):
+    """Projected ego front + lead rear extent, allowing non-centred origins.
+
+    Only supports the straight, common-axis experiment. No claim about curved
+    lane-s, sensor reference points or SimOne obstacle geometry is made here.
+    """
+    vectors = [ego_origin, lead_origin, axis, *ego_points, *lead_points]
+    if (not ego_points or not lead_points or any(len(v) != 3 for v in vectors)
+            or not all(math.isfinite(x) for v in vectors for x in v)
+            or abs(sum(x*x for x in axis) - 1) > 1e-6):
+        raise ValueError('Invalid geometry or non-unit projection axis')
+    def relative(point, origin):
+        return sum((p-o)*a for p, o, a in zip(point, origin, axis))
+    offset = max(relative(p, ego_origin) for p in ego_points) - min(relative(p, lead_origin) for p in lead_points)
+    if offset < 0:
+        raise ValueError('Unsupported negative reference-to-body offset')
+    return offset
+
+
 def stop_command(gap, speed, cruise, stop_gap):
     """Distance envelope followed by proportional speed feedback (SI units)."""
     if not all(math.isfinite(v) for v in (gap, speed, cruise, stop_gap)):
@@ -88,6 +107,8 @@ def parse_args():
     parser.add_argument('--scenario', choices=('stationary', 'stop-go'), default='stationary')
     parser.add_argument('--steering', choices=('formal', 'none'), default='formal',
                         help='Production pursuit/PID, or zero steering for earlier experiment comparison')
+    parser.add_argument('--distance-geometry', choices=('body', 'legacy'), default='body',
+                        help='Measured CARLA projected body geometry, or inherited SimOne fixed offset')
     parser.add_argument('--controller', choices=('formal-follow', 'experimental'), default='formal-follow',
                         help='Production following code by default; experimental retains the old Python planner')
     parser.add_argument('--speed-kmh', type=float, default=10.0)
@@ -270,6 +291,8 @@ def run(args):
             def vertices(box, transform):
                 return [(v.x, v.y, v.z) for v in box.get_world_vertices(transform)]
             gap = projected_gap(vertices(ego.bounding_box, et), vertices(lead.bounding_box, lt), axis)
+            geometry = reference_to_body_offset(vertices(ego.bounding_box, et), vertices(lead.bounding_box, lt),
+                (et.location.x, et.location.y, et.location.z), (lt.location.x, lt.location.y, lt.location.z), axis)
             offset = et.location - origin
             lateral = -forward.y * offset.x + forward.x * offset.y
             lane_offset = et.location - wp.transform.location
@@ -280,6 +303,7 @@ def run(args):
                         longitudinal_origin_distance_m=sum(v * a for v, a in zip(
                             (lt.location.x-et.location.x, lt.location.y-et.location.y, lt.location.z-et.location.z), axis)),
                         center_distance_m=et.location.distance(lt.location), lateral_m=lateral,
+                        measured_reference_offset_m=geometry,
                         lane_center_error_m=lane_lateral,
                         yaw_error_deg=yaw_error, lead_displacement_m=lt.location.distance(lead_origin),
                         x=et.location.x, y=et.location.y, yaw_deg=et.rotation.yaw)
@@ -325,10 +349,11 @@ def run(args):
                          lead_position_error_m=abs(state['lead_displacement_m'] - lead_distance))
             validate_state(state)
             formal = None
+            geometry_offset = state['measured_reference_offset_m'] if args.distance_geometry == 'body' else None
             if following is not None:
                 formal = following.step(0, state['speed_mps'],
                         [(state['longitudinal_origin_distance_m'], lead_speed, 0 if lead_speed < 0.01 else 2, 1, 1)],
-                        case_index=report['case_index'])
+                        case_index=report['case_index'], static_reference_offset=geometry_offset)
                 target = formal['target_speed']
                 throttle, brake = speed_actuators(target, state['speed_mps'])
             else:
@@ -356,6 +381,7 @@ def run(args):
             after = world.get_snapshot()
             result = measure(after)
             rows.append(dict(**state, target_speed_mps=target, throttle=throttle, brake=brake,
+                             static_reference_offset_m=geometry_offset if following is not None and geometry_offset is not None else '',
                              steering=applied_steer, formal_steering=lateral['command'] if lateral else '',
                              pursuit_raw=lateral['raw'] if lateral else '',
                              pursuit_target_index=lateral['target_index'] if lateral else '',

@@ -36,7 +36,7 @@ struct Input { double s, speed; int type, sameLane, sameRoad; };
 struct Output { double target, selectedS, selectedDistance; int found; };
 static std::mutex boundaryMutex;
 #define API extern "C" __declspec(dllexport)
-API int following_abi_version() { return 1; }
+API int following_abi_version() { return 2; }
 API void* following_create(float kp, float ki, float kd, float minimum, int stopCase) {
     if (!std::isfinite(kp) || !std::isfinite(ki) || !std::isfinite(kd) ||
         !std::isfinite(minimum) || minimum < 0) return nullptr;
@@ -44,7 +44,7 @@ API void* following_create(float kp, float ki, float kd, float minimum, int stop
 }
 API void following_destroy(void* p) { delete static_cast<Context*>(p); }
 API int following_step(void* p, double egoS, double egoSpeed, const Input* input,
-                       int count, int caseIndex, Output* out) {
+                       int count, int caseIndex, int useGeometry, double staticOffset, Output* out) {
     if (!p || !out || count < 0 || count > 10000 || (count && !input) ||
         !std::isfinite(egoS) || !std::isfinite(egoSpeed) || egoSpeed < 0 || egoSpeed > 1000) return 0;
     try {
@@ -64,7 +64,8 @@ API int following_step(void* p, double egoS, double egoSpeed, const Input* input
         mainVehicle={egoS, static_cast<float>(egoSpeed)};
         followingLimitSpeed=context.minimum; caseStop=context.stopCase;
         adaptiveFollowing=context.following;
-        const float target=caculateFollowingSpeed(obstacles, caseIndex);
+        const float target=useGeometry ? calculateFollowingSpeedWithGeometry(obstacles, caseIndex, staticOffset)
+                                       : caculateFollowingSpeed(obstacles, caseIndex);
         context.following=adaptiveFollowing;
         Obstacle selected; double distance=0;
         const bool found=calculateNearestObstacle(obstacles, selected, distance);

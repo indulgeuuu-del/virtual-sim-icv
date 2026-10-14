@@ -185,7 +185,7 @@ def main():
         replacements = {
             '// @PRODUCTION_CONTROLLER@': support,
             '// @PRODUCTION_NEAREST@': between(obstacle, 'bool calculateNearestObstacle(', '// 找到所有在主车后方的障碍物'),
-            '// @PRODUCTION_FOLLOWING@': between(obstacle, 'float caculateFollowingSpeed(', '// 计算超车速度'),
+            '// @PRODUCTION_FOLLOWING@': between(obstacle, '// 计算跟车的速度', '// 计算超车速度'),
         }
         for marker, code in replacements.items():
             if following.count(marker) != 1:

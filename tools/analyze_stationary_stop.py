@@ -19,11 +19,13 @@ except ImportError:
 
 def static_model(source):
     """Read only the recognized legacy expression; fail closed on source changes."""
-    source = extract(source, 'float caculateFollowingSpeed(', '// 计算超车速度')
+    source = extract(source, '// 计算跟车的速度', '// 计算超车速度')
     number = r'([0-9]+(?:\.[0-9]+)?)'
     polynomial = re.search(r'float d0 = ' + number + r' \* mainVehicle.speed \* mainVehicle.speed \+ '
                            + number + r' \* mainVehicle.speed - ' + number + r';', source)
     offset = re.search(r'\(minDistance - ' + number + r'\) <= \(d0 \+ distance_expect\)', source)
+    if offset is None and '(minDistance - staticReferenceOffset) <= (d0 + distance_expect)' in source:
+        offset = re.search(r'return calculateFollowingSpeedWithGeometry\(obstacleList, index, ' + number + r'\);', source)
     desired = re.search(r'float distance_expect = \(index == caseStop\) \? ' + number + r' : ' + number + r';', source)
     if not all((polynomial, offset, desired)):
         raise ValueError('Static-stop expression changed; review diagnostic model extraction')
@@ -72,14 +74,19 @@ def analyze_trace(rows, final, model, desired):
     speed = first['speed_mps']
     predicted = model['quadratic'] * speed * speed + model['linear'] * speed + model['constant']
     geometry = first['longitudinal_origin_distance_m'] - first['gap_m']
-    threshold_crossing = model['reference_offset'] + desired + predicted - first['longitudinal_origin_distance_m']
+    supplied_offset = rows[starts[0]].get('static_reference_offset_m', '')
+    applied_offset = float(supplied_offset) if supplied_offset != '' else model['reference_offset']
+    if not math.isfinite(applied_offset) or applied_offset < 0:
+        raise ValueError('Invalid applied geometry offset')
+    threshold_crossing = applied_offset + desired + predicted - first['longitudinal_origin_distance_m']
     reduction = first['gap_m'] - float(final['gap_m'])
-    mismatch = geometry - model['reference_offset']
+    mismatch = geometry - applied_offset
     residual = reduction - predicted
     shortfall = desired - float(final['gap_m'])
     result.update(decomposition_available=True, desired_gap_m=desired,
         measured_reference_to_body_offset_m=geometry,
         legacy_reference_offset_m=model['reference_offset'],
+        applied_reference_offset_m=applied_offset,
         geometry_mismatch_m=mismatch,
         threshold_crossing_m=threshold_crossing,
         previous_frame_requested_motion=starts[0] > 0,
@@ -125,8 +132,17 @@ def analyze_run(directory):
             logged = float(row['formal_target_speed_mps'])
             if not math.isfinite(logged):
                 raise ValueError(f'Non-finite formal output at row {i}')
+            geometry = None
+            if report['parameters'].get('distance_geometry', 'legacy') == 'body':
+                geometry = float(row['static_reference_offset_m'])
+                measured = float(row['longitudinal_origin_distance_m']) - float(row['gap_m'])
+                if not math.isfinite(geometry) or abs(geometry - measured) > 1e-5:
+                    raise ValueError(f'Applied geometry does not match measured body gap at row {i}')
+            elif row.get('static_reference_offset_m', '') != '':
+                raise ValueError('Legacy run unexpectedly records an explicit geometry input')
             replay = controller.step(0, float(row['speed_mps']),
-                [(float(row['longitudinal_origin_distance_m']), 0, 0, 1, 1)], report['case_index'])
+                [(float(row['longitudinal_origin_distance_m']), 0, 0, 1, 1)], report['case_index'],
+                static_reference_offset=geometry)
             if abs(replay['target_speed'] - logged) > 1e-5:
                 raise ValueError(f'Formal command replay mismatch at row {i}')
             if abs(float(row['target_speed_mps']) - logged) > 1e-5:

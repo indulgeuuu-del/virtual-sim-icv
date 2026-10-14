@@ -1,10 +1,30 @@
 import math
 import unittest
 
-from tools.carla_stationary_stop import projected_gap, stop_command, observed_dwell, speed_actuators
+from tools.carla_stationary_stop import projected_gap, stop_command, observed_dwell, speed_actuators, reference_to_body_offset
 
 
 class StationaryStopTests(unittest.TestCase):
+    def test_reference_geometry_supports_asymmetric_origins_and_reverse_axis(self):
+        for direction in (1, -1):
+            ego = [(direction*x, 0, 0) for x in (-1, 3)]
+            lead = [(direction*x, 0, 0) for x in (8, 14)]
+            axis = (direction, 0, 0)
+            offset = reference_to_body_offset(ego, lead, (0, 0, 0), (10*direction, 0, 0), axis)
+            self.assertEqual(offset, 5)
+            self.assertEqual(10-offset, projected_gap(ego, lead, axis))
+
+    def test_reference_geometry_uses_orientation_not_constant_vehicle_length(self):
+        # Lead has rotated 90 degrees: its projected half-width is now 1m.
+        ego = [(-2, 0, 0), (2, 0, 0)]
+        lead = [(9, -2, 0), (11, 2, 0)]
+        self.assertEqual(reference_to_body_offset(ego, lead, (0, 0, 0), (10, 0, 0), (1, 0, 0)), 3)
+
+    def test_invalid_reference_geometry_is_rejected(self):
+        for points, axis in (([], (1, 0, 0)), ([(math.nan, 0, 0)], (1, 0, 0)), ([(0, 0, 0)], (2, 0, 0))):
+            with self.subTest(points=points, axis=axis), self.assertRaises(ValueError):
+                reference_to_body_offset(points, [(10, 0, 0)], (0, 0, 0), (10, 0, 0), axis)
+
     def test_speed_mode_adapter_only_maps_the_requested_speed(self):
         self.assertEqual(speed_actuators(0, 0), (0, 1))
         self.assertEqual(speed_actuators(0, 5), (0, 1))

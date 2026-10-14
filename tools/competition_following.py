@@ -49,7 +49,7 @@ def build_library():
     production = read_source(raw[SOURCES[0]])
     sections = {
         '// @PRODUCTION_NEAREST@': extract(production, 'bool calculateNearestObstacle(', '// 找到所有在主车后方的障碍物'),
-        '// @PRODUCTION_FOLLOWING@': extract(production, 'float caculateFollowingSpeed(', '// 计算超车速度'),
+        '// @PRODUCTION_FOLLOWING@': extract(production, '// 计算跟车的速度', '// 计算超车速度'),
     }
     bridge = read_source(raw[SOURCES[2]])
     for marker, code in sections.items():
@@ -80,7 +80,7 @@ def build_library():
         raise RuntimeError(f'Following bridge compile failed; see {output / "compile.log"}')
     report = dict(source_sha256=hashes, binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                   extracted_sha256={name: hashlib.sha256(code.encode()).hexdigest() for name, code in sections.items()},
-                  toolset=env['VCToolsVersion'].strip(), abi_version=1, sdk_build_verified=False,
+                  toolset=env['VCToolsVersion'].strip(), abi_version=2, sdk_build_verified=False,
                   scope='production nearest-obstacle and following-speed bodies plus real AdaptiveFollowing/PID')
     manifest.write_text(json.dumps(report, indent=2), encoding='utf-8')
     return binary, report
@@ -108,32 +108,39 @@ class FollowingController:
         self.parameter_sha256 = hashlib.sha256(params_raw).hexdigest()
         self._dll = ctypes.CDLL(str(binary))
         self._dll.following_abi_version.restype = ctypes.c_int
-        if self._dll.following_abi_version() != 1:
+        if self._dll.following_abi_version() != 2:
             raise RuntimeError('Following ABI version mismatch')
         self._dll.following_create.argtypes = [ctypes.c_float]*4 + [ctypes.c_int]
         self._dll.following_create.restype = ctypes.c_void_p
         self._dll.following_destroy.argtypes = [ctypes.c_void_p]
         self._dll.following_destroy.restype = None
         self._dll.following_step.argtypes = [ctypes.c_void_p, ctypes.c_double, ctypes.c_double,
-                ctypes.POINTER(_Input), ctypes.c_int, ctypes.c_int, ctypes.POINTER(_Output)]
+                ctypes.POINTER(_Input), ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double,
+                ctypes.POINTER(_Output)]
         self._dll.following_step.restype = ctypes.c_int
         self._handle = self._dll.following_create(*(self.parameters[name] for name in names))
         if not self._handle:
             raise ValueError('Invalid following configuration or allocation failure')
 
-    def step(self, ego_s, ego_speed, obstacles, case_index=2):
+    def step(self, ego_s, ego_speed, obstacles, case_index=2, *, static_reference_offset=None):
         """Obstacles: (lane-s, speed m/s, type 0..3, same-lane, same-road).
 
         lane-s is an absolute coordinate on the ego lane, not signed gap. Type 0
         is static; callers must provide semantic classification, not raw SDK IDs.
+        static_reference_offset optionally supplies reference-to-body geometry for
+        the selected static target, in metres along the same axis. None preserves
+        the legacy SimOne value. It never changes map coordinates or moving PID gaps.
         """
         if not getattr(self, '_handle', None):
             raise RuntimeError('Following controller is closed')
         if len(obstacles) > 10000:
             raise ValueError('Too many obstacles for the bridge')
+        if static_reference_offset is not None and (not math.isfinite(static_reference_offset) or static_reference_offset < 0):
+            raise ValueError('Static reference offset must be finite and nonnegative')
         data = (_Input * len(obstacles))(*(_Input(*item) for item in obstacles))
         result = _Output()
-        if not self._dll.following_step(self._handle, ego_s, ego_speed, data, len(data), case_index, ctypes.byref(result)):
+        if not self._dll.following_step(self._handle, ego_s, ego_speed, data, len(data), case_index,
+                static_reference_offset is not None, static_reference_offset or 0, ctypes.byref(result)):
             raise ValueError('Invalid following input or non-finite production output')
         return dict(target_speed=result.target, selected_s=result.selected_s if result.found else None,
                     selected_distance=result.distance if result.found else None)
