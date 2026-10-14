@@ -453,6 +453,18 @@ def run(args):
                 writer.writeheader()
                 writer.writerows(rows)
         (args.output / 'report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
+    if args.scenario == 'stationary' and following is not None and 'final' in report:
+        # Post-run diagnosis only: cannot change controls or the original verdict.
+        try:
+            if __package__:
+                from .analyze_stationary_stop import save_analysis
+            else:
+                from analyze_stationary_stop import save_analysis
+            save_analysis(args.output)
+            print(f'Stop diagnosis: {args.output / "stop-analysis.json"}')
+        except Exception as exc:
+            # Diagnostics must not turn a completed physical run into an error.
+            print(f'Stop diagnosis unavailable: {exc}')
     print(json.dumps(report, indent=2))
     print(f'Results: {args.output.resolve()}')
     return 0 if report['passed'] else 1
