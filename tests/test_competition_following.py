@@ -32,10 +32,34 @@ class FollowingTests(unittest.TestCase):
         self.assertEqual(c.step(100, 3, [(140, 0, 0, 1, 1), (110, 0, 0, 1, 1)])['selected_s'], 110)
         self.assertEqual(c.step(100, 3, [(100, 0, 0, 1, 1)])['target_speed'], 0)
 
-    def test_known_moving_target_minimum_speed_is_exposed(self):
-        # Diagnostic, not a safety-pass claim: current production has this floor.
+    def test_close_moving_lead_can_request_stop(self):
+        # Scoring p17 tables16/17 and p22 table27: collision/short gap means zero.
+        # This is a command invariant, not proof of the physical 10m boundary.
         c = self.controller()
-        self.assertEqual(c.step(0, 3, [(1, 1, 2, 1, 1)])['target_speed'], c.parameters['followingLimitSpeed'])
+        for distance in (1, 10, 20, 30):
+            for lead_speed in (0.01, 0.1, 1, 2):
+                with self.subTest(distance=distance, lead_speed=lead_speed):
+                    self.assertEqual(c.step(0, 3, [(distance, lead_speed, 2, 1, 1)])['target_speed'], 0)
+
+    def test_slow_lead_at_desired_spacing_is_not_sped_up(self):
+        c = self.controller()
+        for lead_speed in (0.01, 0.1, 1, 2, 3.49, 3.5, 5):
+            with self.subTest(lead_speed=lead_speed):
+                self.assertAlmostEqual(c.step(0, 3, [(45, lead_speed, 2, 1, 1)])['target_speed'], lead_speed, places=5)
+
+    def test_lead_deceleration_then_restart_is_not_latched(self):
+        c = self.controller()
+        values = [c.step(0, 3, [(45, v, 2, 1, 1)])['target_speed'] for v in (5, 3, 1, 0.1)]
+        self.assertEqual(values, sorted(values, reverse=True))
+        self.assertLess(values[-1], 0.11)
+        self.assertEqual(c.step(0, 3, [(20, 0.01, 2, 1, 1)])['target_speed'], 0)
+        self.assertEqual(c.step(0, 0, [(20, 0, 0, 1, 1)], c.parameters['caseStop'])['target_speed'], 0)
+        self.assertGreater(c.step(0, 0, [(50, 3, 2, 1, 1)])['target_speed'], 3.5)
+
+    def test_open_gap_and_regular_following_still_allow_motion(self):
+        c = self.controller()
+        self.assertGreater(c.step(0, 3, [(60, 5, 2, 1, 1)])['target_speed'], 5)
+        self.assertAlmostEqual(c.step(0, 3, [(45, 5, 2, 1, 1)])['target_speed'], 5)
 
     def test_invalid_observation_is_rejected_at_boundary(self):
         c = self.controller()

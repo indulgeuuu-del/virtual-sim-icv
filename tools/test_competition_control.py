@@ -31,6 +31,7 @@ OUTPUT_TESTS = (
     'output_stop_both', 'output_move_reverse', 'output_move_slide',
     'output_percent_zero', 'output_resume_slide',
     'output_route_failure_reverse', 'output_route_failure_slide',
+    'output_follow_stop', 'output_follow_slow', 'output_follow_stop_resume',
 )
 
 
@@ -59,7 +60,7 @@ def main():
     )
     report = {'sdk_build_verified': False, 'platform_run_verified': False,
               'official_score_verified': False,
-              'scope': 'extracted geometry and GPS-update prefix; full strategy loop and drive body; real pursuit/PID/curvature',
+              'scope': 'extracted geometry, GPS-update prefix and following functions; full strategy loop and drive body; real pursuit/PID/curvature',
               'limitations': 'map/API/frame-input fixtures; no full update(), SDK, vehicle dynamics or scoring',
               'tests': {}, 'passed': False}
     try:
@@ -85,6 +86,7 @@ def main():
             root / 'tests/cpp/manual_stub/test_main.cpp', root / 'tests/cpp/drive_output_test.cpp',
             root / 'tests/cpp/manual_stub/test_stop_timing.cpp',
             root / 'tests/cpp/gps_update_gate.cpp',
+            root / 'tests/cpp/following_drive_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
         report['source_sha256'] = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -127,6 +129,17 @@ def main():
         curvature = sources['TrajectoryControl/src/core/process.cpp'].split('static double dist3D(', 1)[1]
         # Helpers are copied from current production sources, not reimplemented.
         support = sources['TrajectoryControl/src/tools/controller.hpp']
+        following = read_source(root / 'tests/cpp/following_drive_support.cpp')
+        replacements = {
+            '// @PRODUCTION_CONTROLLER@': support,
+            '// @PRODUCTION_NEAREST@': between(obstacle, 'bool calculateNearestObstacle(', '// 找到所有在主车后方的障碍物'),
+            '// @PRODUCTION_FOLLOWING@': between(obstacle, 'float caculateFollowingSpeed(', '// 计算超车速度'),
+        }
+        for marker, code in replacements.items():
+            if following.count(marker) != 1:
+                raise ValueError('missing following insertion point')
+            following = following.replace(marker, code)
+        (drive_dir / 'following.cpp').write_bytes(following.encode('utf-8'))
         cpp = '#include "main.h"\n' + support + '\nclass UtilDriver' + pursuit
         cpp += '\ninline PositionalPID steerPID(0,0,0);\n'
         cpp += 'double approximateCurvature(' + curvature_decl + ';\nstatic double dist3D(' + curvature
@@ -165,7 +178,7 @@ def main():
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
         compile_run(output, ['gps_gate.cpp'], ['initial_failure', 'late_failure', 'transient_failure',
                                               'success', 'recovery'], 'gps_gate')
-        compile_run(drive_dir, ['main_manual.cpp', 'drive.cpp', 'test_main.cpp'],
+        compile_run(drive_dir, ['main_manual.cpp', 'drive.cpp', 'following.cpp', 'test_main.cpp'],
                     LOOP_TESTS + OUTPUT_TESTS, 'drive', ['/DTEST_REAL_DRIVE'])
         report['passed'] = bool(report['tests']) and all(t['passed'] for t in report['tests'].values())
     except (OSError, ValueError, IndexError, KeyError, RuntimeError, subprocess.SubprocessError) as error:

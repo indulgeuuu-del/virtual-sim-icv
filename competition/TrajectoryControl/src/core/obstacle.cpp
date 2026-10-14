@@ -660,7 +660,9 @@ float caculateFollowingSpeed(const std::vector<Obstacle>& obstacleList, int inde
 
             //AdaptiveFollowing adaptiveFollowing(followingKp, followingKi, followingKd, 45); // 跟车 PID
             adaptiveFollowing.update(potentialObstacle.velocity, minDistance); // 跟车速度环
-            speed = std::max(followingLimitSpeed, adaptiveFollowing.getSpeed()); // 给到速度，并且使得速度大于最小速度
+            // Preserve the controller's slowdown/stop request. A minimum-speed
+            // scoring preference must never force motion towards a close lead.
+            speed = adaptiveFollowing.getSpeed(); // Already clamped to nonnegative by AdaptiveFollowing
         }
     }
     return speed;

@@ -2,6 +2,7 @@
 // Engineering invariant supporting 2027 scoring PDF physical p11, table 3:
 // a zero target speed must reach SetDrive even during reverse/sliding logic.
 // This does not assert physical standstill, stopping distance, or official score.
+extern float followingTargetForTest(double distance, float leadSpeed);
 bool driveOutputTest(const std::string& name) {
     using Gear = ESimOne_Gear_Mode;
     using Mode = ESimOne_Throttle_Mode;
@@ -11,6 +12,19 @@ bool driveOutputTest(const std::string& name) {
     steerKpUse = steerKp;
     steerKdUse = steerKd;
     pLight->signalLights = 4;
+    if (name == "output_follow_stop" || name == "output_follow_slow" || name == "output_follow_stop_resume") {
+        const bool slow = name == "output_follow_slow";
+        pControl->throttle = followingTargetForTest(slow ? 45 : 20, slow ? 2.0f : 0.1f);
+        mainVehicle.drive();
+        require(obs(0).speed == (slow ? 2 : 0), "following decision was raised before final SetDrive");
+        require(obs(0).gear == Gear::ESimOne_Gear_Mode_Drive, "following command used wrong gear");
+        if (name == "output_follow_stop_resume") {
+            pControl->throttle = followingTargetForTest(45, 2.0f);
+            mainVehicle.drive();
+            require(obs(1).speed == 2, "following did not resume at the lead's low speed");
+        }
+        return true;
+    }
     if (name == "output_route_failure_reverse" || name == "output_route_failure_slide") {
         // Same loop -> real drive -> captured SDK boundary; old path remains valid.
         strategyPoint = CheckedPoints{};

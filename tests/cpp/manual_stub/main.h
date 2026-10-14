@@ -110,6 +110,7 @@ struct MainVehicle {
     SSD::SimPoint3D pt;
     bool useDefaultPath = true, reverse = false;
     float speed = 0, steeringOffset = 0;
+    double s = 0;
     bool update() {
         const FrameInput input = frameInputs.empty()
             ? FrameInput{pt.x, speed, static_cast<long long>(std::llround(now * 1000))}
