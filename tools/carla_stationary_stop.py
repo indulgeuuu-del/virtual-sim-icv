@@ -1,8 +1,8 @@
 """Stop behind a stationary vehicle on a verified straight Town01 lane.
 
 Exclusive local CARLA server required: loads Town01 if necessary.
-Uses ground-truth vehicle boxes and the competition C++ stop/dwell controller.
-Approach-speed and throttle/brake adaptation remain specific to this CARLA experiment.
+Default: compile and run production nearest-obstacle and following-speed bodies.
+Uses ground-truth straight-lane state. SDK Speed-mode actuator mapping is CARLA-specific.
 """
 
 import argparse
@@ -17,16 +17,35 @@ import time
 
 if __package__:
     from .competition_stop import StopController
+    from .competition_following import FollowingController
 else:
     from competition_stop import StopController
+    from competition_following import FollowingController
+
+
+def speed_actuators(target, speed):
+    """Translate m/s target to CARLA pedals; never change the target itself.
+
+    This feedback controller substitutes SimOne Speed mode, not vehicle planning.
+    It is an experimental mapping, not a model of SimOne's internal controller.
+    """
+    if not all(math.isfinite(v) and v >= 0 for v in (target, speed)):
+        raise ValueError('Invalid speed target or measurement')
+    if target == 0:
+        return 0.0, 1.0
+    error = target - speed
+    if error > 0:
+        return min(0.55, 0.08 + 0.35 * error), 0.0
+    return 0.0, min(1.0, -0.45 * error)
 
 
 def observed_dwell(samples, stop_gap, max_gap=0.25):
-    """Independent measurement from logged vehicle states, not controller output."""
+    """Measure logged standstill; stop_gap=None measures it regardless of location."""
     end = start = None
     for state in reversed(samples):
         if (not all(math.isfinite(state[key]) for key in ('time', 'speed_mps', 'gap_m')) or
-                abs(state['speed_mps']) > 0.1 or abs(state['gap_m'] - stop_gap) > 0.5):
+                abs(state['speed_mps']) > 0.1 or
+                (stop_gap is not None and abs(state['gap_m'] - stop_gap) > 0.5)):
             break
         stamp = state['time']
         if not math.isfinite(stamp) or (start is not None and not 0 <= start - stamp <= max_gap):
@@ -62,6 +81,8 @@ def stop_command(gap, speed, cruise, stop_gap):
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--controller', choices=('formal-follow', 'experimental'), default='formal-follow',
+                        help='Production following code by default; experimental retains the old Python planner')
     parser.add_argument('--speed-kmh', type=float, default=10.0)
     parser.add_argument('--gap', type=float, default=25.0, help='Initial body gap in m')
     parser.add_argument('--stop-gap', type=float, default=2.0, help='Desired final body gap in m')
@@ -95,6 +116,7 @@ def run(args):
     actors, rows, collisions = [], [], []
     world = original = None
     shared = None
+    following = None
     dt = args.fixed_delta_seconds
     report = dict(passed=False, competition_verified=False, input_source='CARLA ground truth',
                   parameters={k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
@@ -108,6 +130,15 @@ def run(args):
                       acceptance=dict(stationary_speed_mps=0.1, gap_error_m=0.5,
                                       dwell_seconds=args.dwell_seconds, exclusive=args.exclusive_dwell,
                                       scope='auxiliary CARLA experiment, not official scoring'))
+        if args.controller == 'formal-follow':
+            following = FollowingController()
+            report.update(controller='production calculateNearestObstacle + caculateFollowingSpeed',
+                          following_build=following.build, following_parameters=following.parameters,
+                          following_parameter_sha256=following.parameter_sha256,
+                          case_index=2,
+                          stop_core_role='observer only: never overrides production speed',
+                          input_mapping='straight lane: ego s=0; obstacle s=projected actor-origin separation; static, same road/lane',
+                          limitations='no production Obstacle constructor, map queries, main_follow loop, drive(), lateral control or SimOne SDK')
         report.update(client_version=client.get_client_version(), server_version=client.get_server_version())
         if report['client_version'] != '0.9.15' or report['server_version'] != '0.9.15':
             raise RuntimeError('This experiment requires CARLA client and server 0.9.15')
@@ -216,6 +247,8 @@ def run(args):
             yaw_error = (et.rotation.yaw - spawn.rotation.yaw + 180) % 360 - 180
             return dict(frame=snapshot.frame, time=snapshot.timestamp.elapsed_seconds,
                         gap_m=gap, speed_mps=ego_state.get_velocity().length(),
+                        longitudinal_origin_distance_m=sum(v * a for v, a in zip(
+                            (lt.location.x-et.location.x, lt.location.y-et.location.y, lt.location.z-et.location.z), axis)),
                         center_distance_m=et.location.distance(lt.location), lateral_m=lateral,
                         yaw_error_deg=yaw_error, lead_displacement_m=lt.location.distance(lead_origin),
                         x=et.location.x, y=et.location.y)
@@ -248,14 +281,22 @@ def run(args):
                 raise RuntimeError('Vehicle left the supported straight-line corridor')
             if state['lead_displacement_m'] > 0.05:
                 raise RuntimeError('Lead vehicle moved')
-            target, throttle, brake, _ = stop_command(state['gap_m'], state['speed_mps'], cruise, args.stop_gap)
+            formal = None
+            if following is not None:
+                formal = following.step(0, state['speed_mps'],
+                        [(state['longitudinal_origin_distance_m'], 0, 0, 1, 1)], case_index=2)
+                target = formal['target_speed']
+                throttle, brake = speed_actuators(target, state['speed_mps'])
+            else:
+                target, throttle, brake, _ = stop_command(state['gap_m'], state['speed_mps'], cruise, args.stop_gap)
             # The front car remains present: ready means dwell completed, not permission to drive into it.
             stop = shared.step(state['time'], state['speed_mps'],
                                -0.5 <= state['gap_m'] - args.stop_gap <= 0.15,
                                target, release_allowed=False)
-            target = stop.target_speed
-            if stop.phase != 'approaching':
-                throttle, brake = 0.0, 1.0
+            if following is None:
+                target = stop.target_speed
+                if stop.phase != 'approaching':
+                    throttle, brake = 0.0, 1.0
             if stop.phase == 'invalid':
                 raise RuntimeError('Shared stop controller rejected discontinuous or invalid frame input')
             ego.apply_control(carla.VehicleControl(throttle=throttle, brake=brake))
@@ -264,14 +305,18 @@ def run(args):
             after = world.get_snapshot()
             result = measure(after)
             rows.append(dict(**state, target_speed_mps=target, throttle=throttle, brake=brake,
+                             formal_target_speed_mps=formal['target_speed'] if formal else '',
+                             formal_selected_s=formal['selected_s'] if formal else '',
                              stop_phase=stop.phase, controller_held_seconds=stop.held_seconds,
                              dwell_ready=stop.ready, result_time=result['time'],
                              result_frame=frame, result_gap_m=result['gap_m'], result_speed_mps=result['speed_mps']))
             name = 'start.png' if step == 0 else None
             if brake > 0.05 and not braking_saved:
                 name, braking_saved = 'braking.png', True
-            if stop.ready:
+            if stop.ready and target == 0 and result['speed_mps'] <= 0.1:
                 name = 'stopped.png'
+            elif step == round(args.timeout / dt) - 1:
+                name = 'final.png'
             if name:
                 save_image(frame, name)
             else:
@@ -282,25 +327,39 @@ def run(args):
             snapshot = after
             if not args.no_realtime:
                 time.sleep(max(0.0, dt - (time.monotonic() - started)))
-            if stop.ready:
+            if stop.ready and target == 0 and result['speed_mps'] <= 0.1:
                 break
         final = measure(snapshot)
         observed = observed_dwell(rows + [final], args.stop_gap)
         duration_ok = observed > args.dwell_seconds if args.exclusive_dwell else observed >= args.dwell_seconds
         report.update(final=final, frames=len(rows), stop_held_seconds=observed,
+                      stationary_seconds=observed_dwell(rows + [final], None),
+                      target_restart_count=sum(a['target_speed_mps'] == 0 and b['target_speed_mps'] > 0
+                                               for a, b in zip(rows, rows[1:])),
                       controller_held_seconds=stop.held_seconds if stop else 0,
                       elapsed_sim_seconds=final['time'] - first['time'],
                       min_gap_m=min([first['gap_m']] + [row['result_gap_m'] for row in rows]),
                       max_lateral_m=max(abs(row['lateral_m']) for row in rows),
                       stop_error_m=final['gap_m'] - args.stop_gap,
-                      passed=(stop is not None and stop.ready and duration_ok and abs(final['gap_m'] - args.stop_gap) <= 0.5
+                      passed=(stop is not None and stop.ready and duration_ok and final['speed_mps'] <= 0.1
+                              and (following is None or rows[-1]['formal_target_speed_mps'] == 0)
+                              and abs(final['gap_m'] - args.stop_gap) <= 0.5
                               and final['gap_m'] > 0 and not collisions))
         if not report['passed']:
-            report['error'] = 'Timeout or final gap outside +/-0.5 m acceptance tolerance'
+            reasons = []
+            if abs(final['gap_m'] - args.stop_gap) > 0.5:
+                reasons.append('Final gap outside +/-0.5 m experimental tolerance')
+            if not duration_ok:
+                reasons.append('Required continuous standstill within target region not observed')
+            if following is not None and rows[-1]['formal_target_speed_mps'] != 0:
+                reasons.append('Production code still requests motion')
+            report['error'] = '; '.join(reasons) or 'Stop observation or final speed acceptance failed'
     except (Exception, KeyboardInterrupt) as exc:
         report['passed'] = False
         report['error'] = f'{type(exc).__name__}: {exc}'
     finally:
+        if following is not None:
+            following.close()
         if shared is not None:
             shared.close()
         client.set_timeout(5.0)

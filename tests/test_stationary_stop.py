@@ -1,10 +1,19 @@
 import math
 import unittest
 
-from tools.carla_stationary_stop import projected_gap, stop_command, observed_dwell
+from tools.carla_stationary_stop import projected_gap, stop_command, observed_dwell, speed_actuators
 
 
 class StationaryStopTests(unittest.TestCase):
+    def test_speed_mode_adapter_only_maps_the_requested_speed(self):
+        self.assertEqual(speed_actuators(0, 0), (0, 1))
+        self.assertEqual(speed_actuators(0, 5), (0, 1))
+        self.assertGreater(speed_actuators(3, 1)[0], 0)
+        self.assertGreater(speed_actuators(3, 5)[1], 0)
+        for value in (math.nan, math.inf, -1):
+            with self.assertRaises(ValueError):
+                speed_actuators(value, 1)
+
     def test_body_gap_not_center_distance(self):
         self.assertEqual(projected_gap([(-2, 0, 0), (2, 0, 0)], [(8, 0, 0), (12, 0, 0)], (1, 0, 0)), 6)
 
@@ -43,6 +52,7 @@ class StationaryStopTests(unittest.TestCase):
         self.assertAlmostEqual(observed_dwell(states, 2), 0.3)
         states[-1]['gap_m'] = 3
         self.assertEqual(observed_dwell(states, 2), 0)
+        self.assertAlmostEqual(observed_dwell(states, None), 0.3)
 
     def test_dwell_does_not_count_pauses_or_missing_intervals(self):
         self.assertEqual(observed_dwell([dict(time=1, speed_mps=0, gap_m=2)]*30, 2), 0)

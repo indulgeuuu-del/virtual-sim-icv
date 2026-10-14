@@ -581,7 +581,11 @@ bool calculateNearestObstacle(const std::vector<Obstacle>& list, Obstacle& obsta
     float minDistance = std::numeric_limits<float>::max();
 
     for (size_t i = 0; i < list.size(); ++i) {
-        float distance = std::fabs(list[i].sRelativeToVehicle - mainVehicle.s);
+        // Following targets must lie ahead on the ego lane. An absolute s
+        // difference incorrectly selected rear/adjacent traffic as the lead.
+        if (!list[i].isSameRoadWithMainVehicle || !list[i].isSameLaneWithMainVehicle ||
+            list[i].sRelativeToVehicle < mainVehicle.s) continue;
+        float distance = static_cast<float>(list[i].sRelativeToVehicle - mainVehicle.s);
         if (distance < minDistance) {
             minDistance = distance;
             minIndex = i;
