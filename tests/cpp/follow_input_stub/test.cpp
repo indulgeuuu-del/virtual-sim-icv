@@ -17,7 +17,14 @@ int main(int argc,char** argv) {
         else if(name=="pid_recovery") { inputs[1].gps=false; followingKi=0.1f; }
         else if(name=="empty_valid") { for(auto& input:inputs) input.count=0; }
         else throw std::runtime_error("unknown test");
-        try { main_follow(); throw std::runtime_error("unexpected return"); } catch(const EndFrames&) {}
+        try {
+#ifdef TEST_TRACK_PREFIX
+            main_track();
+#else
+            main_follow();
+#endif
+            throw std::runtime_error("unexpected return");
+        } catch(const EndFrames&) {}
         require(waits==advances && sends.size()==inputs.size(),"missing stop command or unpaired frame");
         int expectedDrives=0;
         for(size_t i=0;i<inputs.size();++i) {

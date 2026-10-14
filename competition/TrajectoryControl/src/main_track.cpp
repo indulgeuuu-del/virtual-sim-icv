@@ -15,8 +15,23 @@ int main_track(void)
 
 		recordEvaluation(); // 更新 NEVC 系统评分
 
-		updateObstacleData(); // 更新障碍物参数
-		mainVehicle.update(); // 更新主车参数
+		const bool obstaclesReady = updateObstacleData();
+		const bool vehicleReady = mainVehicle.update();
+		if (!obstaclesReady || !vehicleReady)
+		{
+			obstacleList.clear();
+			stopLineList.clear();
+			pControl->throttle = 0;
+			pControl->steering = 0;
+			pControl->gear = mainVehicle.reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
+				: ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
+			pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
+			if (!SimOneAPI::SetDrive(mainVehicle.id, pControl.get()))
+				LOG << "SetDrive failed while requesting safe stop";
+			LOG << "Track input unavailable: stop until both streams recover";
+			SimOneAPI::NextFrame(frame);
+			continue;
+		}
 
 		waitInitial(); // 等待仿真平台初始化完成
 

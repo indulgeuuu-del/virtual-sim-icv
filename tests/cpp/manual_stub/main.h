@@ -91,7 +91,7 @@ struct SimOne_Data_Gps {
     long long timestamp = 0;
 };
 inline auto pGps = std::make_unique<SimOne_Data_Gps>();
-struct FrameInput { double x, speed; long long timestamp; bool valid = true; };
+struct FrameInput { double x, speed; long long timestamp; bool valid = true; bool obstacleValid = true; };
 inline std::vector<FrameInput> frameInputs;
 // The real-drive build retains the production drive, pursuit, PID and curvature
 // bodies. update() supplies deterministic frame input; it is not an SDK test.
@@ -139,7 +139,7 @@ struct MainVehicle {
 inline MainVehicle mainVehicle;
 inline float calculateFps(int, double) { return 10; }
 inline void recordEvaluation() {}
-inline void updateObstacleData() {}
+inline bool updateObstacleData() { return frameInputs.empty() || frameInputs.at(waits-1).obstacleValid; }
 inline void waitInitial() {}
 namespace UtilMath {
 inline double planarDistance(const SSD::SimPoint3D& a, const SSD::SimPoint3D& b) {

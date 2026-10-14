@@ -24,7 +24,7 @@ LOOP_TESTS = (
     'transition_route_failure', 'fractional_stop', 'reentry',
     'timing_moving', 'timing_paused', 'timing_roll_again', 'timing_leave_zone',
     'timing_bad_gps', 'timing_clock_backwards', 'timing_gap', 'timing_boundary',
-    'timing_switch_stop',
+    'timing_switch_stop', 'timing_bad_obstacle',
 )
 OUTPUT_TESTS = (
     'output_stop_forward', 'output_stop_reverse', 'output_stop_slide',
@@ -58,11 +58,12 @@ def main():
         'TrajectoryControl/src/core/process.h', 'TrajectoryControl/src/tools/controller.hpp',
         'util/UtilDriver.h',
         'TrajectoryControl/src/main.cpp', 'TrajectoryControl/src/main_follow.cpp',
+        'TrajectoryControl/src/main_track.cpp',
     )
     report = {'sdk_build_verified': False, 'platform_run_verified': False,
               'official_score_verified': False,
-              'scope': 'geometry, GPS-update prefix and following functions; full strategy and following loops; obstacle fetch; real drive/pursuit/PID/curvature',
-              'limitations': 'map/API/frame-input fixtures; following input suite substitutes drive; no full update(), SDK, vehicle dynamics or scoring',
+              'scope': 'geometry, GPS-update and track input prefixes; full strategy and following loops; obstacle fetch; real drive/pursuit/PID/curvature',
+              'limitations': 'map/API/frame-input fixtures; following/track input suites substitute drive; no full update()/track planner, SDK, vehicle dynamics or scoring',
               'tests': {}, 'passed': False}
     try:
         revision = None
@@ -161,6 +162,14 @@ def main():
         follow_support += 'bool updateObstacleData(' + fetch + '\n'
         follow_support += replacements['// @PRODUCTION_NEAREST@'] + replacements['// @PRODUCTION_FOLLOWING@']
         (follow_dir / 'support.cpp').write_bytes(follow_support.encode('utf-8'))
+        # Execute the real track loop through its fresh-input gate. The much
+        # larger downstream planner is deliberately represented by drive().
+        track_prefix = sources['TrajectoryControl/src/main_track.cpp'].split(
+            '\t\tFlagType::isCrosswalkExist = getCrossWalk();', 1)
+        if len(track_prefix) != 2:
+            raise ValueError('missing track input boundary')
+        (follow_dir / 'track_prefix.cpp').write_bytes((track_prefix[0] +
+            '\n mainVehicle.drive(); SimOneAPI::NextFrame(frame);\n}\nreturn 0;\n}\n').encode('utf-8'))
 
         if os.name != 'nt':
             raise RuntimeError('This runner currently supports Windows/MSVC only')
@@ -200,6 +209,10 @@ def main():
                     ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
                      'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
                      'gps_reverse', 'prolonged_failure', 'pid_recovery'], 'follow_input')
+        compile_run(follow_dir, ['track_prefix.cpp', 'support.cpp', 'test.cpp'],
+                    ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
+                     'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
+                     'gps_reverse', 'prolonged_failure'], 'track_input', ['/DTEST_TRACK_PREFIX'])
         report['passed'] = bool(report['tests']) and all(t['passed'] for t in report['tests'].values())
     except (OSError, ValueError, IndexError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
         report['error'] = f'{type(error).__name__}: {error}'

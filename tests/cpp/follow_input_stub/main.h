@@ -47,6 +47,10 @@ inline int caseIdx=25, caseStop=25;
 inline float followingKp=-0.2f, followingKi=0, followingKd=0, followingLimitSpeed=3.5f;
 inline AdaptiveFollowing adaptiveFollowing(-0.2f,0,0,45);
 inline std::vector<int> validWayPoints, targetPath;
+inline std::vector<int> trafficLightList, stopLineList;
+struct Timer { void tic() {} double get() const { return 0.1; } };
+inline Timer timer;
+inline float calculateFps(int,double) { return 10; }
 struct Input { bool gps=true, obstacle=true, send=true; int count=1; };
 inline std::vector<Input> inputs;
 inline bool clearFailedOutput=false;
@@ -54,6 +58,7 @@ inline std::vector<Control> sends;
 inline const Input& current() { return inputs.at(waits-1); }
 struct EndFrames {};
 namespace SimOneAPI {
+inline bool GetTrafficLightList(std::vector<int>&) { return true; }
 inline int Wait() { if(waits==inputs.size()) throw EndFrames{}; return ++waits; }
 inline void NextFrame(int frame) {
     if(frame!=waits || advances+1!=waits) throw std::runtime_error("frame pairing");
@@ -99,3 +104,4 @@ inline void waitInitial() {}
 bool updateObstacleData(int timeoutFrames=6);
 float caculateFollowingSpeed(const std::vector<Obstacle>&,int);
 int main_follow();
+int main_track();

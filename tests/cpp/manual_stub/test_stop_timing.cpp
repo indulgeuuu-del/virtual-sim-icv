@@ -21,6 +21,9 @@ bool stopTimingTest(const std::string& name) {
     } else if (name == "timing_bad_gps") {
         frameInputs[3].valid = false;
         resume = 9;
+    } else if (name == "timing_bad_obstacle") {
+        frameInputs[3].obstacleValid = false;
+        resume = 9;
     } else if (name == "timing_clock_backwards") {
         for (int i=3;i<frameLimit;++i) frameInputs[i].timestamp = (i-3)*100;
         resume = 9; // rollback sample invalid, first fresh stationary sample at 4

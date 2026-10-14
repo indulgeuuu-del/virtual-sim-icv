@@ -59,17 +59,21 @@ int main_manual(void)
 
 		recordEvaluation(); // 更新 NEVC 系统评分
 
-		updateObstacleData(); // 更新障碍物参数
-		if (!mainVehicle.update()) // GPS失败时不得沿用旧位置累计停车时间
+		const bool obstaclesReady = updateObstacleData();
+		const bool vehicleReady = mainVehicle.update();
+		if (!obstaclesReady || !vehicleReady) // 数据缺失时不得沿用旧观测累计停车时间
 		{
 			stopController.invalidate();
+			obstacleList.clear();
+			stopLineList.clear();
 			pControl->throttle = 0;
 			pControl->steering = 0;
 			pControl->gear = mainVehicle.reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
 				: ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
 			pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
-			SimOneAPI::SetDrive(mainVehicle.id, pControl.get());
-			LOG << "GPS更新失败：停车并重置连续驻停计时";
+			if (!SimOneAPI::SetDrive(mainVehicle.id, pControl.get()))
+				LOG << "SetDrive failed while requesting safe stop";
+			LOG << "GPS或障碍物更新失败：停车并重置连续驻停计时";
 			SimOneAPI::NextFrame(frame);
 			continue;
 		}
