@@ -1,4 +1,4 @@
-#pragma once
+ï»¿#pragma once
 #include <cmath>
 #include <corecrt_math_defines.h>
 #include "SSD/SimPoint3D.h"
@@ -9,30 +9,30 @@ class Obstacle;
 
 extern double getRoadWidth(const SSD::SimString& laneId, const SSD::SimPoint3D& pos);
 extern float getLaneAzimuth(const SSD::SimString& laneId);
-extern bool getValidTrafficLight(const SSD::SimVector<HDMapStandalone::MSignal>& list, HDMapStandalone::MSignal& light);
+extern bool getValidTrafficLight(const SSD::SimVector<HDMapStandalone::MSignal>& list, HDMapStandalone::MSignal& light, bool& dataValid);
 
-// ¼ÆËãºÏ³ÉÊ¸Á¿µÄ·½Î»½Ç£¨ENU ×ø±êÏµÏÂ£¬¼´ÒÔÕı¶«Îª 0 ¶È£¬ÄæÊ±ÕëÎªÕı·½Ïò£©
+// è®¡ç®—åˆæˆçŸ¢é‡çš„æ–¹ä½è§’ï¼ˆENU åæ ‡ç³»ä¸‹ï¼Œå³ä»¥æ­£ä¸œä¸º 0 åº¦ï¼Œé€†æ—¶é’ˆä¸ºæ­£æ–¹å‘ï¼‰
 inline float calculateResultantAzimuth(float xVelocity, float yVelocity)
 {
 	float azimuth = std::atan2f(yVelocity, xVelocity) * 180.0f / M_PI;
-	return azimuth < 0 ? (azimuth + 360.0f) : azimuth; // ½«½Ç¶È·¶Î§µ÷ÕûÎª [0, 360)
+	return azimuth < 0 ? (azimuth + 360.0f) : azimuth; // å°†è§’åº¦èŒƒå›´è°ƒæ•´ä¸º [0, 360)
 }
 
 /**
- * @brief ¼ÆËã¶şÎ¬ÏòÁ¿µÄ²æ»ı£¬ÓÃÓÚÅĞ¶ÏÈıµã¹¹³ÉµÄ×ªÏò¹ØÏµ¡£
+ * @brief è®¡ç®—äºŒç»´å‘é‡çš„å‰ç§¯ï¼Œç”¨äºåˆ¤æ–­ä¸‰ç‚¹æ„æˆçš„è½¬å‘å…³ç³»ã€‚
  *
- * ¸ø¶¨Èı¸öµã a¡¢b¡¢c£¬·Ö±ğ¼ÆËãÏòÁ¿ AB ºÍÏòÁ¿ AC£¬
- * ·µ»ØËüÃÇµÄ¶şÎ¬²æ»ı£¨ux * vy - uy * vx£©¡£
+ * ç»™å®šä¸‰ä¸ªç‚¹ aã€bã€cï¼Œåˆ†åˆ«è®¡ç®—å‘é‡ AB å’Œå‘é‡ ACï¼Œ
+ * è¿”å›å®ƒä»¬çš„äºŒç»´å‰ç§¯ï¼ˆux * vy - uy * vxï¼‰ã€‚
  *
- * ¸Ã²æ»ı½á¹û¿ÉÓÃÓÚÅĞ¶Ïµã c Ïà¶ÔÓÚÏòÁ¿ AB µÄ·½Î»¹ØÏµ£º
- * - ·µ»ØÖµ > 0£ºµã c ÔÚ´Ó a µ½ b µÄ·½ÏòµÄ×ó²à£¨×ó×ª£©
- * - ·µ»ØÖµ < 0£ºµã c ÔÚ´Ó a µ½ b µÄ·½ÏòµÄÓÒ²à£¨ÓÒ×ª£©
- * - ·µ»ØÖµ = 0£ºÈıµã¹²Ïß£¨¼´µã c ÔÚÖ±Ïß AB ÉÏ£©
+ * è¯¥å‰ç§¯ç»“æœå¯ç”¨äºåˆ¤æ–­ç‚¹ c ç›¸å¯¹äºå‘é‡ AB çš„æ–¹ä½å…³ç³»ï¼š
+ * - è¿”å›å€¼ > 0ï¼šç‚¹ c åœ¨ä» a åˆ° b çš„æ–¹å‘çš„å·¦ä¾§ï¼ˆå·¦è½¬ï¼‰
+ * - è¿”å›å€¼ < 0ï¼šç‚¹ c åœ¨ä» a åˆ° b çš„æ–¹å‘çš„å³ä¾§ï¼ˆå³è½¬ï¼‰
+ * - è¿”å›å€¼ = 0ï¼šä¸‰ç‚¹å…±çº¿ï¼ˆå³ç‚¹ c åœ¨ç›´çº¿ AB ä¸Šï¼‰
  *
- * @param a µã a£¬±íÊ¾Æğµã
- * @param b µã b£¬±íÊ¾·½ÏòÏòÁ¿µÄÖÕµã£¨´Ó a Ö¸Ïò b£©
- * @param c µã c£¬±íÊ¾ĞèÒªÅĞ¶ÏÆäÏà¶ÔÎ»ÖÃµÄµã
- * @return float ²æ»ı½á¹û£¨Õı¸º±íÊ¾×óÓÒ£¬0 ±íÊ¾¹²Ïß£©
+ * @param a ç‚¹ aï¼Œè¡¨ç¤ºèµ·ç‚¹
+ * @param b ç‚¹ bï¼Œè¡¨ç¤ºæ–¹å‘å‘é‡çš„ç»ˆç‚¹ï¼ˆä» a æŒ‡å‘ bï¼‰
+ * @param c ç‚¹ cï¼Œè¡¨ç¤ºéœ€è¦åˆ¤æ–­å…¶ç›¸å¯¹ä½ç½®çš„ç‚¹
+ * @return float å‰ç§¯ç»“æœï¼ˆæ­£è´Ÿè¡¨ç¤ºå·¦å³ï¼Œ0 è¡¨ç¤ºå…±çº¿ï¼‰
  */
 inline float crossProduct(const SSD::SimPoint3D& a, const SSD::SimPoint3D& b, const SSD::SimPoint3D& c)
 {
@@ -44,26 +44,26 @@ inline float crossProduct(const SSD::SimPoint3D& a, const SSD::SimPoint3D& b, co
 extern bool isPathRequireLaneChange(const SSD::SimVector<SSD::SimPoint3D>& path);
 extern bool isTrajInterfere(const SSD::SimVector<SSD::SimPoint3D>& path, const Obstacle& obstacle);
 
-// ³¬³µËÙ¶È¹æ»®
+// è¶…è½¦é€Ÿåº¦è§„åˆ’
 inline float calculateTargetOvertakingVelocity(float v1, float s0, float s1, float L0, float L1, float La, float Lx)
 {
 	return v1 * La / ((s0 - s1) - 0.5 * (L0 + L1) + La - Lx);
 }
 
-// ÅĞ¶ÏÁ½ÌõµÀÂ·ÊÇ·ñ¾ßÓĞÏàÍ¬µÄµÀÂ· Road ID
+// åˆ¤æ–­ä¸¤æ¡é“è·¯æ˜¯å¦å…·æœ‰ç›¸åŒçš„é“è·¯ Road ID
 extern bool isSameRoadId(const SSD::SimString& roadStr1, const SSD::SimString& roadStr2);
 extern bool isSameRoadId(const SSD::SimPoint3D& p1, const SSD::SimPoint3D& p2);
 
-// »ñÈ¡Á½¸öµãÖ®¼äµÄ st ¾àÀë
+// è·å–ä¸¤ä¸ªç‚¹ä¹‹é—´çš„ st è·ç¦»
 extern float getDistS(const SSD::SimPoint3D& currentPos, const SSD::SimPoint3D& target);
 extern float getDistT(const SSD::SimPoint3D& currentPos, const SSD::SimPoint3D& target);
 extern float getDistT(const SSD::SimPoint3D& currentPos, const SimOne_Data_Vec3f& target);
 
-// brief ²é¿´ÓĞÎŞ°ßÂíÏß
+// brief æŸ¥çœ‹æœ‰æ— æ–‘é©¬çº¿
 extern bool getCrossWalk(void);
-//brief ²åÖµ·¨»ñµÃÁ½µã¼äµÄ¹ì¼£
+//brief æ’å€¼æ³•è·å¾—ä¸¤ç‚¹é—´çš„è½¨è¿¹
 bool equidistantSampling(const SSD::SimPoint3DVector& initPath, SSD::SimPoint3DVector& targetPath, float dist);
-//brief ¼ÆËãÒ»¶Î¹ì¼£µÄÆ½¾ùÇúÂÊ
+//brief è®¡ç®—ä¸€æ®µè½¨è¿¹çš„å¹³å‡æ›²ç‡
 double approximateCurvature(const std::vector<SSD::SimPoint3D>& pts,
-	double sampleArcDist = 0.5 /*Ã×*/,
+	double sampleArcDist = 0.5 /*ç±³*/,
 	double minValidCurv = 1e-6);

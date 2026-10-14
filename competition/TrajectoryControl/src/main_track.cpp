@@ -117,7 +117,9 @@ int main_track(void)
 		}
 
 		/* 检测并创建红绿灯停止线 */
-		if (getValidTrafficLight(trafficLightList, potentialLight)) stopLineList.push_back(StopLine(potentialLight));
+		bool trafficLightsValid = true;
+		if (getValidTrafficLight(trafficLightList, potentialLight, trafficLightsValid)) stopLineList.push_back(StopLine(potentialLight));
+		if (!trafficLightsValid) pControl->throttle = 0; // 未知灯态不能当作允许通行
 
 		float minDistance;
 		StopLine potentialStopLine;
@@ -581,7 +583,7 @@ int main_track(void)
 				pControl->throttle = std::min<double>(pControl->throttle, mainVehicle.neighborhood.vrf);
 		}
 
-		if (stopBeforeOvertaking || lateralProjectionFailed) pControl->throttle = 0.0f;
+		if (stopBeforeOvertaking || lateralProjectionFailed || !trafficLightsValid) pControl->throttle = 0.0f;
 		if (lateralProjectionFailed) LOG << "Invalid lateral prediction: stop and retry";
 		mainVehicle.drive();
 

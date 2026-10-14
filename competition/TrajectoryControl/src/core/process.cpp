@@ -56,12 +56,17 @@ float getLaneAzimuth(const SSD::SimString& laneId)
 	return azimuth < 0.0f ? azimuth + 360.0f : azimuth;
 }
 
-bool getValidTrafficLight(const SSD::SimVector<HDMapStandalone::MSignal>& list, HDMapStandalone::MSignal& light)
+bool getValidTrafficLight(const SSD::SimVector<HDMapStandalone::MSignal>& list, HDMapStandalone::MSignal& light, bool& dataValid)
 {
+	dataValid = true;
 	std::unique_ptr<SimOne_Data_TrafficLight> pTrafficLight = std::make_unique< SimOne_Data_TrafficLight>();
 	for (size_t i = 0, ie = list.size(); i < ie; ++i)
 	{
-		SimOneAPI::GetTrafficLight(mainVehicle.id, list[i].id, pTrafficLight.get());
+		if (!SimOneAPI::GetTrafficLight(mainVehicle.id, list[i].id, pTrafficLight.get())) {
+			dataValid = false;
+			globalLogger(Logger::Color::BrightGreen) << "Traffic-light read failed: state is unknown";
+			continue; // 不把SDK留下的旧输出当作本灯状态
+		}
 		if (pTrafficLight->isMainVehicleNextTrafficLight)
 		{
 			if (pTrafficLight->status == ESimOne_TrafficLight_Status::ESimOne_TrafficLight_Status_Red || pTrafficLight->status == ESimOne_TrafficLight_Status::ESimOne_TrafficLight_Status_Yellow) // 红灯、黄灯

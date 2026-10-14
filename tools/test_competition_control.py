@@ -39,6 +39,7 @@ OUTPUT_TESTS = (
     'output_arbitration_release', 'output_arbitration_disabled', 'output_arbitration_front',
     'output_arbitration_left_front', 'output_arbitration_right_front',
     'output_arbitration_bad_projection',
+    'output_arbitration_bad_light',
     'output_limit_high', 'output_limit_equal', 'output_limit_below', 'output_limit_reverse',
     'output_limit_slide', 'output_limit_overspeed_slide', 'output_limit_zero',
     'output_limit_nan', 'output_limit_negative', 'output_limit_percent',
@@ -107,6 +108,7 @@ def main():
             root / 'tests/cpp/navigation_test.cpp',
             root / 'tests/cpp/lane_distance_test.cpp',
             root / 'tests/cpp/lateral_gap_test.cpp',
+            root / 'tests/cpp/traffic_light_test.cpp',
             root / 'tests/cpp/track_speed_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
@@ -158,6 +160,11 @@ def main():
             gap_helper = 'auto predictedLateralGap = [&](const Obstacle& o) { const Obstacle* vehicle=&o; return ' + legacy_gap + '; };\n'
         gap_harness = read_source(root / 'tests/cpp/lateral_gap_test.cpp')
         (output / 'lateral_gap.cpp').write_bytes(gap_harness.replace('// @PREDICTED_GAP@', gap_helper).encode('utf-8'))
+        light_code = between(sources['TrajectoryControl/src/core/process.cpp'], 'bool getValidTrafficLight(', '// 判断主车轨迹是否涉及变道过程')
+        light_call = 'getValidTrafficLight(list,light,known)' if 'bool& dataValid' in light_code else 'getValidTrafficLight(list,light)'
+        light_harness = read_source(root / 'tests/cpp/traffic_light_test.cpp')
+        (output / 'traffic_light.cpp').write_bytes(('#define READ_LIGHT(list,light,known) '+light_call+'\n'+
+            light_harness.replace('// @TRAFFIC_LIGHT@',light_code)).encode('utf-8'))
 
         drive_dir = output / 'drive'
         drive_dir.mkdir(exist_ok=True)
@@ -266,6 +273,8 @@ def main():
                     'lateral_target_failure', 'lateral_missing_lane', 'lateral_nonfinite'], 'lane_distance')
         compile_run(output, ['lateral_gap.cpp'], ['positive_far','negative_far','positive_near','negative_near',
                     'different_road','missing_lane','current_failure','target_failure','empty_prediction','empty_path'], 'lateral_gap')
+        compile_run(output, ['traffic_light.cpp'], ['red','yellow','green','failure','green_then_failure',
+                    'failure_then_red','unrelated_red','empty'], 'traffic_light')
         compile_run(drive_dir, ['main_manual.cpp', 'drive.cpp', 'following.cpp', 'track_speed.cpp', 'test_main.cpp'],
                     LOOP_TESTS + OUTPUT_TESTS, 'drive', ['/DTEST_REAL_DRIVE'])
         compile_run(follow_dir, ['main_follow.cpp', 'support.cpp', 'test.cpp'],
