@@ -19,10 +19,12 @@ if __package__:
     from .competition_stop import StopController
     from .competition_following import FollowingController
     from .lead_profile import StopGoProfile, assess_stop_go
+    from .competition_steering import SteeringController, carla_to_formal
 else:
     from competition_stop import StopController
     from competition_following import FollowingController
     from lead_profile import StopGoProfile, assess_stop_go
+    from competition_steering import SteeringController, carla_to_formal
 
 
 def speed_actuators(target, speed):
@@ -84,6 +86,8 @@ def stop_command(gap, speed, cruise, stop_gap):
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scenario', choices=('stationary', 'stop-go'), default='stationary')
+    parser.add_argument('--steering', choices=('formal', 'none'), default='formal',
+                        help='Production pursuit/PID, or zero steering for earlier experiment comparison')
     parser.add_argument('--controller', choices=('formal-follow', 'experimental'), default='formal-follow',
                         help='Production following code by default; experimental retains the old Python planner')
     parser.add_argument('--speed-kmh', type=float, default=10.0)
@@ -125,6 +129,7 @@ def run(args):
     world = original = None
     shared = None
     following = None
+    steering = None
     dt = args.fixed_delta_seconds
     profile = StopGoProfile(speed=args.speed_kmh / 3.6) if args.scenario == 'stop-go' else None
     report = dict(passed=False, competition_verified=False, input_source='CARLA ground truth',
@@ -155,6 +160,12 @@ def run(args):
                               acceptance=dict(gap_m=[10, 50], standstill_seconds=2, recovery_speed_mps=1,
                                   scope='auxiliary stop-go stimulus; fixed hold, not official reactive restart sequence'),
                               lead_profile_sha256=hashlib.sha256(Path(__file__).with_name('lead_profile.py').read_bytes()).hexdigest())
+        if args.steering == 'formal':
+            steering = SteeringController()
+            report.update(steering_build=steering.build, steering_parameters=steering.parameters,
+                          steering_parameter_sha256=steering.parameter_sha256,
+                          steering_scope='production pursuit + PID, fixed following-mode gains; no drive, curvature gain or lane-change offset',
+                          steering_mapping='CARLA (x,y,yaw_deg) -> (x,-y,-yaw_rad); normalized command clamped to [-1,1]; actuator calibration not verified')
         report.update(client_version=client.get_client_version(), server_version=client.get_server_version())
         if report['client_version'] != '0.9.15' or report['server_version'] != '0.9.15':
             raise RuntimeError('This experiment requires CARLA client and server 0.9.15')
@@ -213,6 +224,7 @@ def run(args):
             break
         if ego is None or lead is None:
             raise RuntimeError('No unoccupied straight lane long enough for the requested gap')
+        steering_path = [(p.transform.location.x, -p.transform.location.y, p.transform.location.z) for p in samples]
         axis = (forward.x, forward.y, forward.z)
         collision = world.spawn_actor(library.find('sensor.other.collision'), carla.Transform(), attach_to=ego)
         actors.append(collision)
@@ -260,14 +272,17 @@ def run(args):
             gap = projected_gap(vertices(ego.bounding_box, et), vertices(lead.bounding_box, lt), axis)
             offset = et.location - origin
             lateral = -forward.y * offset.x + forward.x * offset.y
+            lane_offset = et.location - wp.transform.location
+            lane_lateral = -forward.y * lane_offset.x + forward.x * lane_offset.y
             yaw_error = (et.rotation.yaw - spawn.rotation.yaw + 180) % 360 - 180
             return dict(frame=snapshot.frame, time=snapshot.timestamp.elapsed_seconds,
                         gap_m=gap, speed_mps=ego_state.get_velocity().length(),
                         longitudinal_origin_distance_m=sum(v * a for v, a in zip(
                             (lt.location.x-et.location.x, lt.location.y-et.location.y, lt.location.z-et.location.z), axis)),
                         center_distance_m=et.location.distance(lt.location), lateral_m=lateral,
+                        lane_center_error_m=lane_lateral,
                         yaw_error_deg=yaw_error, lead_displacement_m=lt.location.distance(lead_origin),
-                        x=et.location.x, y=et.location.y)
+                        x=et.location.x, y=et.location.y, yaw_deg=et.rotation.yaw)
 
         def save_image(frame, name):
             while True:
@@ -292,7 +307,10 @@ def run(args):
                 raise RuntimeError('Lead vehicle differs from prescribed position')
         report.update(map=road_map.name, vehicle=ego.type_id, initial=first,
                       ego_box_extent=dict(x=ego.bounding_box.extent.x, y=ego.bounding_box.extent.y),
-                      road_id=wp.road_id, lane_id=wp.lane_id, fixed_delta_seconds=dt)
+                      road_id=wp.road_id, lane_id=wp.lane_id, fixed_delta_seconds=dt,
+                      formal_path=dict(start=steering_path[0], end=steering_path[-1], points=len(steering_path),
+                                       coordinate_system='x,-CARLA_y,z',
+                                       sha256=hashlib.sha256(json.dumps(steering_path).encode()).hexdigest()))
         if abs(first['gap_m'] - args.gap) > 0.5 or abs(first['speed_mps'] - cruise) > 0.5:
             raise RuntimeError('Initial gap or speed outside experiment tolerance')
         print(f"Initial: {first['speed_mps'] * 3.6:.2f} km/h, body gap {first['gap_m']:.2f} m", flush=True)
@@ -325,7 +343,10 @@ def run(args):
                     throttle, brake = 0.0, 1.0
             if stop.phase == 'invalid':
                 raise RuntimeError('Shared stop controller rejected discontinuous or invalid frame input')
-            ego.apply_control(carla.VehicleControl(throttle=throttle, brake=brake))
+            lateral = steering.step(steering_path, *carla_to_formal(state['x'], state['y'], state['yaw_deg']),
+                                    state['speed_mps']) if steering else None
+            applied_steer = max(-1.0, min(1.0, lateral['command'])) if lateral else 0.0
+            ego.apply_control(carla.VehicleControl(throttle=throttle, brake=brake, steer=applied_steer))
             if profile:
                 distance = profile.sample(state['elapsed'] + dt)[0]
                 lead.set_transform(carla.Transform(
@@ -335,6 +356,9 @@ def run(args):
             after = world.get_snapshot()
             result = measure(after)
             rows.append(dict(**state, target_speed_mps=target, throttle=throttle, brake=brake,
+                             steering=applied_steer, formal_steering=lateral['command'] if lateral else '',
+                             pursuit_raw=lateral['raw'] if lateral else '',
+                             pursuit_target_index=lateral['target_index'] if lateral else '',
                              formal_target_speed_mps=formal['target_speed'] if formal else '',
                              formal_selected_s=formal['selected_s'] if formal else '',
                              stop_phase=stop.phase, controller_held_seconds=stop.held_seconds,
@@ -375,7 +399,8 @@ def run(args):
                       controller_held_seconds=stop.held_seconds if stop else 0,
                       elapsed_sim_seconds=final['time'] - first['time'],
                       min_gap_m=min([first['gap_m']] + [row['result_gap_m'] for row in rows]),
-                      max_lateral_m=max(abs(row['lateral_m']) for row in rows),
+                      max_lateral_m=max(abs(row['lateral_m']) for row in rows + [final]),
+                      max_lane_center_error_m=max(abs(row['lane_center_error_m']) for row in rows + [final]),
                       stop_error_m=final['gap_m'] - args.stop_gap,
                       passed=(stop is not None and stop.ready and duration_ok and final['speed_mps'] <= 0.1
                               and (following is None or rows[-1]['formal_target_speed_mps'] == 0)
@@ -399,6 +424,8 @@ def run(args):
         report['passed'] = False
         report['error'] = f'{type(exc).__name__}: {exc}'
     finally:
+        if steering is not None:
+            steering.close()
         if following is not None:
             following.close()
         if shared is not None:
