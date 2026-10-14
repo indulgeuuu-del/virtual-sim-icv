@@ -3,7 +3,8 @@
 int main_track(void)
 {
 	timer.tic(); // 开始计时
-	initNavigation(validWayPoints, targetPath); // 规划主车路径
+	bool navigationReady = false;
+	targetPath.clear(); // 本次运行必须取得有效路径
 	SimOneAPI::GetTrafficLightList(trafficLightList); // 获取当前场景得交通灯列表
 
 	while (true)
@@ -17,7 +18,9 @@ int main_track(void)
 
 		const bool obstaclesReady = updateObstacleData();
 		const bool vehicleReady = mainVehicle.update();
-		if (!obstaclesReady || !vehicleReady)
+		if (obstaclesReady && vehicleReady && !navigationReady)
+			navigationReady = initNavigation(validWayPoints, targetPath);
+		if (!obstaclesReady || !vehicleReady || !navigationReady)
 		{
 			obstacleList.clear();
 			stopLineList.clear();
@@ -28,7 +31,7 @@ int main_track(void)
 			pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
 			if (!SimOneAPI::SetDrive(mainVehicle.id, pControl.get()))
 				LOG << "SetDrive failed while requesting safe stop";
-			LOG << "Track input unavailable: stop until both streams recover";
+			LOG << "Track input or route unavailable: stop and retry";
 			SimOneAPI::NextFrame(frame);
 			continue;
 		}

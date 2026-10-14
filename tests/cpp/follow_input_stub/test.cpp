@@ -15,6 +15,8 @@ int main(int argc,char** argv) {
         else if(name=="gps_reverse") { inputs[1].gps=false; mainVehicle.reverse=true; }
         else if(name=="prolonged_failure") { inputs[0].obstacle=false; inputs[1].obstacle=false; }
         else if(name=="pid_recovery") { inputs[1].gps=false; followingKi=0.1f; }
+        else if(name=="route_initial") inputs[0].route=false;
+        else if(name=="route_repeated") { inputs[0].route=false; inputs[1].route=false; }
         else if(name=="empty_valid") { for(auto& input:inputs) input.count=0; }
         else throw std::runtime_error("unknown test");
         try {
@@ -28,7 +30,7 @@ int main(int argc,char** argv) {
         require(waits==advances && sends.size()==inputs.size(),"missing stop command or unpaired frame");
         int expectedDrives=0;
         for(size_t i=0;i<inputs.size();++i) {
-            if(inputs[i].gps && inputs[i].obstacle) {
+            if(inputs[i].gps && inputs[i].obstacle && inputs[i].route) {
                 ++expectedDrives;
                 require(sends[i].throttle>0,"fresh input failed to resume");
             } else {
@@ -44,6 +46,8 @@ int main(int argc,char** argv) {
         if(name!="empty_valid") require(!globalLogger.text.empty(),"failure has no diagnostic");
         if(name=="send_failure") require(globalLogger.text.find("SetDrive")!=std::string::npos,"stop send failure not diagnosed");
         if(name=="pid_recovery") require(sends[0].throttle==sends[2].throttle,"PID history retained across invalid input");
+        if(name=="route_initial") require(navigationCalls==2,"route not retried or rebuilt after success");
+        if(name=="route_repeated") require(navigationCalls==3,"route retries did not continue");
         std::cout<<"PASS "<<name<<'\n'; return 0;
     } catch(const std::exception& e) { std::cerr<<e.what()<<'\n'; return 1; }
 }

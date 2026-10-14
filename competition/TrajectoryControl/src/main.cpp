@@ -84,41 +84,47 @@ void loadJson(void)
 
 bool initNavigation(SSD::SimVector<int>& validWayPoints, SSD::SimPoint3DVector& targetPath)
 {
-	// 获取路径点
-	if (SimOneAPI::GetWayPoints(mainVehicle.id, pWayPoints.get()))
-	{
-		for (size_t i = 0; i < pWayPoints->wayPointsSize; ++i) {
-			SSD::SimPoint3D inputWayPoints(pWayPoints->wayPoints[i].posX, pWayPoints->wayPoints[i].posY, 0);
-			initialPath.push_back(inputWayPoints);
-		}
-	}
-	else {
+	// SDK失败可能已经修改输出；完整建路成功后才替换当前路径。
+	if (!SimOneAPI::GetWayPoints(mainVehicle.id, pWayPoints.get())) {
 		globalLogger(Logger::Color::BrightMagenta) << "获取主车预设路径的起点和终点失败";
-		std::exit(-1);
+		return false;
+	}
+	SSD::SimPoint3DVector newInitialPath, newTargetPath;
+	SSD::SimVector<int> newValidWayPoints;
+	for (size_t i = 0; i < pWayPoints->wayPointsSize; ++i) {
+		newInitialPath.push_back(SSD::SimPoint3D(pWayPoints->wayPoints[i].posX, pWayPoints->wayPoints[i].posY, 0));
 	}
 
 	// 根据路径点数量分情况处理
 	if (pWayPoints->wayPointsSize >= 2) { // 大于等于 2 个路径点，调用 GenerateRoute 生成目标路径
-		if (!SimOneAPI::GenerateRoute(initialPath, validWayPoints, targetPath)) {
+		if (!SimOneAPI::GenerateRoute(newInitialPath, newValidWayPoints, newTargetPath)) {
 			globalLogger(Logger::Color::BrightMagenta) << "使用 A* 生成主车路径规划失败";
-			std::exit(-1);
+			return false;
 		}
 	}
 	else if (pWayPoints->wayPointsSize == 1) { // 只有 1 个路径点，获取该路径点所在的车道 ID 和车道信息
-		SSD::SimString laneIdInit = m_SampleGetNearMostLane(initialPath[0]);
+		SSD::SimString laneIdInit = m_SampleGetNearMostLane(newInitialPath[0]);
 		HDMapStandalone::MLaneInfo laneInfoInit;
 		if (SimOneAPI::GetLaneSample(laneIdInit, laneInfoInit)) { // 如果获取车道信息成功
-			targetPath = laneInfoInit.centerLine; // 设置中心线为目标路径
+			newTargetPath = laneInfoInit.centerLine; // 设置中心线为目标路径
 		}
 		else { // 如果获取车道信息失败 
 			globalLogger(Logger::Color::BrightMagenta) << "使用 A* 生成主车路径规划失败";
-			std::exit(-1);
+			return false;
 		}
 	}
 	else { // 如果没有路径点，则报错
 		globalLogger(Logger::Color::BrightMagenta) << "主车的路径点数量为 0";
-		std::exit(-1);
+		return false;
 	}
+	if (newTargetPath.size() < 2) {
+		globalLogger(Logger::Color::BrightMagenta) << "主车路径少于两个点，等待有效路径";
+		return false;
+	}
+	initialPath = newInitialPath;
+	validWayPoints = newValidWayPoints;
+	targetPath = newTargetPath;
+	return true;
 }
 
 bool updateObstacleData(int timeoutFrames)

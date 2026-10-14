@@ -2,7 +2,8 @@
 
 int main_follow(void)
 {
-	initNavigation(validWayPoints, targetPath); // 规划主车路径
+	bool navigationReady = false;
+	targetPath.clear(); // 本次运行必须取得有效路径
 	adaptiveFollowing = AdaptiveFollowing(followingKp, followingKi, followingKd, 45); // 跟车 PID
 
 	while (true) // 跟车场景
@@ -16,7 +17,9 @@ int main_follow(void)
 
 		const bool obstaclesReady = updateObstacleData(); // 本帧读取结果，不是历史初始化标记
 		const bool vehicleReady = mainVehicle.update();
-		if (!obstaclesReady || !vehicleReady)
+		if (obstaclesReady && vehicleReady && !navigationReady)
+			navigationReady = initNavigation(validWayPoints, targetPath);
+		if (!obstaclesReady || !vehicleReady || !navigationReady)
 		{
 			obstacleList.clear(); // 不保留失效的帧间目标
 			adaptiveFollowing = AdaptiveFollowing(followingKp, followingKi, followingKd, 45);
@@ -27,7 +30,7 @@ int main_follow(void)
 			pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
 			if (!SimOneAPI::SetDrive(mainVehicle.id, pControl.get()))
 				LOG << "SetDrive failed while requesting safe stop";
-			LOG << "Following input unavailable: stop until both streams recover";
+			LOG << "Following input or route unavailable: stop and retry";
 			SimOneAPI::NextFrame(frame);
 			continue;
 		}

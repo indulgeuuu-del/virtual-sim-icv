@@ -90,6 +90,7 @@ def main():
             root / 'tests/cpp/gps_update_gate.cpp',
             root / 'tests/cpp/following_drive_support.cpp',
             root / 'tests/cpp/follow_input_stub/main.h', root / 'tests/cpp/follow_input_stub/test.cpp',
+            root / 'tests/cpp/navigation_test.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
         report['source_sha256'] = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -116,6 +117,11 @@ def main():
         if gps_harness.count('// @GPS_PREFIX@') != 1:
             raise ValueError('missing GPS prefix insertion point')
         (output / 'gps_gate.cpp').write_bytes(gps_harness.replace('// @GPS_PREFIX@', gps_prefix).encode('utf-8'))
+        navigation = between(sources['TrajectoryControl/src/main.cpp'], 'bool initNavigation(', 'bool updateObstacleData(')
+        navigation_harness = read_source(root / 'tests/cpp/navigation_test.cpp')
+        if navigation_harness.count('// @NAVIGATION@') != 1:
+            raise ValueError('missing navigation insertion point')
+        (output / 'navigation.cpp').write_bytes(navigation_harness.replace('// @NAVIGATION@', navigation).encode('utf-8'))
 
         drive_dir = output / 'drive'
         drive_dir.mkdir(exist_ok=True)
@@ -203,16 +209,19 @@ def main():
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
         compile_run(output, ['gps_gate.cpp'], ['initial_failure', 'late_failure', 'transient_failure',
                                               'success', 'recovery'], 'gps_gate')
+        compile_run(output, ['navigation.cpp'], ['waypoint_failure', 'zero_waypoints', 'route_failure',
+                    'empty_route', 'short_route', 'lane_failure', 'empty_lane', 'short_lane',
+                    'route_success', 'lane_success', 'repeat', 'recovery'], 'navigation')
         compile_run(drive_dir, ['main_manual.cpp', 'drive.cpp', 'following.cpp', 'test_main.cpp'],
                     LOOP_TESTS + OUTPUT_TESTS, 'drive', ['/DTEST_REAL_DRIVE'])
         compile_run(follow_dir, ['main_follow.cpp', 'support.cpp', 'test.cpp'],
                     ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
                      'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
-                     'gps_reverse', 'prolonged_failure', 'pid_recovery'], 'follow_input')
+                     'gps_reverse', 'prolonged_failure', 'pid_recovery', 'route_initial', 'route_repeated'], 'follow_input')
         compile_run(follow_dir, ['track_prefix.cpp', 'support.cpp', 'test.cpp'],
                     ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
                      'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
-                     'gps_reverse', 'prolonged_failure'], 'track_input', ['/DTEST_TRACK_PREFIX'])
+                     'gps_reverse', 'prolonged_failure', 'route_initial', 'route_repeated'], 'track_input', ['/DTEST_TRACK_PREFIX'])
         report['passed'] = bool(report['tests']) and all(t['passed'] for t in report['tests'].values())
     except (OSError, ValueError, IndexError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
         report['error'] = f'{type(error).__name__}: {error}'

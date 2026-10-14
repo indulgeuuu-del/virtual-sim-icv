@@ -51,7 +51,7 @@ inline std::vector<int> trafficLightList, stopLineList;
 struct Timer { void tic() {} double get() const { return 0.1; } };
 inline Timer timer;
 inline float calculateFps(int,double) { return 10; }
-struct Input { bool gps=true, obstacle=true, send=true; int count=1; };
+struct Input { bool gps=true, obstacle=true, send=true; int count=1; bool route=true; };
 inline std::vector<Input> inputs;
 inline bool clearFailedOutput=false;
 inline std::vector<Control> sends;
@@ -98,7 +98,12 @@ struct Obstacle {
     explicit Obstacle(const RawObstacle& raw): sRelativeToVehicle(raw.s) {}
 };
 inline std::vector<Obstacle> obstacleList;
-inline bool initNavigation(std::vector<int>&,std::vector<int>& path) { path={0,100}; return true; }
+inline int navigationCalls=0;
+inline bool initNavigation(std::vector<int>&,std::vector<int>& path) {
+    ++navigationCalls;
+    if(!inputs.at(waits>0 ? waits-1 : 0).route) { path.clear(); return false; }
+    path={0,100}; return true;
+}
 inline void recordEvaluation() {}
 inline void waitInitial() {}
 bool updateObstacleData(int timeoutFrames=6);
