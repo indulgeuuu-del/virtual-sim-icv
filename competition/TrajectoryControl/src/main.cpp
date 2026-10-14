@@ -123,9 +123,10 @@ bool initNavigation(SSD::SimVector<int>& validWayPoints, SSD::SimPoint3DVector& 
 
 bool updateObstacleData(int timeoutFrames)
 {
-	if (!SimOneAPI::GetGroundTruth(mainVehicle.id, pObstacle.get()) && frameCount < timeoutFrames) {
-		globalLogger(Logger::Color::BrightMagenta) << "正在获取障碍物信息 ...";
-		//std::this_thread::sleep_for(std::chrono::milliseconds(100));
+	if (!SimOneAPI::GetGroundTruth(mainVehicle.id, pObstacle.get())) {
+		globalLogger(Logger::Color::BrightMagenta) << (frameCount < timeoutFrames
+			? "正在获取障碍物信息 ..." : "障碍物更新失败，不能使用本帧数据");
+		return false;
 	}
 	else
 	{

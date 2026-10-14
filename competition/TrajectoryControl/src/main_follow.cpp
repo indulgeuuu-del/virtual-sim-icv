@@ -1,23 +1,38 @@
-#include "main.h"
+ï»¿#include "main.h"
 
 int main_follow(void)
 {
-	initNavigation(validWayPoints, targetPath); // ¹æ»®Ö÷³µÂ·¾¶
-	adaptiveFollowing = AdaptiveFollowing(followingKp, followingKi, followingKd, 45); // ¸ú³µ PID
+	initNavigation(validWayPoints, targetPath); // è§„åˆ’ä¸»è½¦è·¯å¾„
+	adaptiveFollowing = AdaptiveFollowing(followingKp, followingKi, followingKd, 45); // è·Ÿè½¦ PID
 
-	while (true) // ¸ú³µ³¡¾°
+	while (true) // è·Ÿè½¦åœºæ™¯
 	{
 		++frameCount;
 		int frame = SimOneAPI::Wait();
 
 		globalLogger(Logger::Color::BrightBlue) << "\n\nFrame = " << frameCount;
 
-		recordEvaluation(); // ¸üÐÂ NEVC ÏµÍ³ÆÀ·Ö
+		recordEvaluation(); // æ›´æ–° NEVC ç³»ç»Ÿè¯„åˆ†
 
-		updateObstacleData(); // ¸üÐÂÕÏ°­Îï²ÎÊý
-		mainVehicle.update(); // ¸üÐÂÖ÷³µ²ÎÊý
+		const bool obstaclesReady = updateObstacleData(); // æœ¬å¸§è¯»å–ç»“æžœï¼Œä¸æ˜¯åŽ†å²åˆå§‹åŒ–æ ‡è®°
+		const bool vehicleReady = mainVehicle.update();
+		if (!obstaclesReady || !vehicleReady)
+		{
+			obstacleList.clear(); // ä¸ä¿ç•™å¤±æ•ˆçš„å¸§é—´ç›®æ ‡
+			adaptiveFollowing = AdaptiveFollowing(followingKp, followingKi, followingKd, 45);
+			pControl->throttle = 0;
+			pControl->steering = 0;
+			pControl->gear = mainVehicle.reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
+				: ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
+			pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
+			if (!SimOneAPI::SetDrive(mainVehicle.id, pControl.get()))
+				LOG << "SetDrive failed while requesting safe stop";
+			LOG << "Following input unavailable: stop until both streams recover";
+			SimOneAPI::NextFrame(frame);
+			continue;
+		}
 
-		waitInitial(); // µÈ´ý·ÂÕæÆ½Ì¨³õÊ¼»¯Íê³É
+		waitInitial(); // ç­‰å¾…ä»¿çœŸå¹³å°åˆå§‹åŒ–å®Œæˆ
 
 		steerKpUse = steerKp;
 		steerKdUse = steerKd;

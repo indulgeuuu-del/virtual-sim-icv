@@ -57,11 +57,12 @@ def main():
         'TrajectoryControl/src/main_manual.cpp', 'TrajectoryControl/src/core/process.cpp',
         'TrajectoryControl/src/core/process.h', 'TrajectoryControl/src/tools/controller.hpp',
         'util/UtilDriver.h',
+        'TrajectoryControl/src/main.cpp', 'TrajectoryControl/src/main_follow.cpp',
     )
     report = {'sdk_build_verified': False, 'platform_run_verified': False,
               'official_score_verified': False,
-              'scope': 'extracted geometry, GPS-update prefix and following functions; full strategy loop and drive body; real pursuit/PID/curvature',
-              'limitations': 'map/API/frame-input fixtures; no full update(), SDK, vehicle dynamics or scoring',
+              'scope': 'geometry, GPS-update prefix and following functions; full strategy and following loops; obstacle fetch; real drive/pursuit/PID/curvature',
+              'limitations': 'map/API/frame-input fixtures; following input suite substitutes drive; no full update(), SDK, vehicle dynamics or scoring',
               'tests': {}, 'passed': False}
     try:
         revision = None
@@ -87,6 +88,7 @@ def main():
             root / 'tests/cpp/manual_stub/test_stop_timing.cpp',
             root / 'tests/cpp/gps_update_gate.cpp',
             root / 'tests/cpp/following_drive_support.cpp',
+            root / 'tests/cpp/follow_input_stub/main.h', root / 'tests/cpp/follow_input_stub/test.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
         report['source_sha256'] = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -146,6 +148,20 @@ def main():
         cpp += '\n' + drive
         (drive_dir / 'drive.cpp').write_bytes(cpp.encode('utf-8'))
 
+        follow_dir = output / 'follow_input'
+        follow_dir.mkdir(exist_ok=True)
+        for name in ('main.h', 'test.cpp'):
+            shutil.copyfile(root / 'tests/cpp/follow_input_stub' / name, follow_dir / name)
+        (follow_dir / 'controller.hpp').write_bytes(support.encode('utf-8'))
+        (follow_dir / 'main_follow.cpp').write_bytes(sources['TrajectoryControl/src/main_follow.cpp'].encode('utf-8'))
+        fetch = sources['TrajectoryControl/src/main.cpp'].split('bool updateObstacleData(', 1)[1]
+        gps_gate = between(sources['TrajectoryControl/src/core/vehicle.cpp'],
+                           'bool MainVehicle::update(', '// 计算主车的详细参数')
+        follow_support = '#include "main.h"\n' + gps_gate + '\nreturn true;\n}\n'
+        follow_support += 'bool updateObstacleData(' + fetch + '\n'
+        follow_support += replacements['// @PRODUCTION_NEAREST@'] + replacements['// @PRODUCTION_FOLLOWING@']
+        (follow_dir / 'support.cpp').write_bytes(follow_support.encode('utf-8'))
+
         if os.name != 'nt':
             raise RuntimeError('This runner currently supports Windows/MSVC only')
         vswhere = Path(os.environ.get('ProgramFiles(x86)', 'C:/Program Files (x86)')) / 'Microsoft Visual Studio/Installer/vswhere.exe'
@@ -180,6 +196,10 @@ def main():
                                               'success', 'recovery'], 'gps_gate')
         compile_run(drive_dir, ['main_manual.cpp', 'drive.cpp', 'following.cpp', 'test_main.cpp'],
                     LOOP_TESTS + OUTPUT_TESTS, 'drive', ['/DTEST_REAL_DRIVE'])
+        compile_run(follow_dir, ['main_follow.cpp', 'support.cpp', 'test.cpp'],
+                    ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
+                     'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
+                     'gps_reverse', 'prolonged_failure', 'pid_recovery'], 'follow_input')
         report['passed'] = bool(report['tests']) and all(t['passed'] for t in report['tests'].values())
     except (OSError, ValueError, IndexError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
         report['error'] = f'{type(error).__name__}: {error}'
