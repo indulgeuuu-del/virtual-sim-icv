@@ -32,6 +32,8 @@ OUTPUT_TESTS = (
     'output_percent_zero', 'output_resume_slide',
     'output_route_failure_reverse', 'output_route_failure_slide',
     'output_follow_stop', 'output_follow_slow', 'output_follow_stop_resume',
+    'output_empty_path', 'output_short_path', 'output_empty_reverse',
+    'output_empty_slide', 'output_empty_recovery', 'output_explicit_no_path',
 )
 
 

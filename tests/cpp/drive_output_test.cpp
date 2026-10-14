@@ -12,6 +12,28 @@ bool driveOutputTest(const std::string& name) {
     steerKpUse = steerKp;
     steerKdUse = steerKd;
     pLight->signalLights = 4;
+    if (name == "output_empty_path" || name == "output_short_path" ||
+        name == "output_empty_reverse" || name == "output_empty_slide" ||
+        name == "output_empty_recovery" || name == "output_explicit_no_path") {
+        targetPath.clear();
+        if(name == "output_short_path") targetPath.push_back({0,0,0});
+        mainVehicle.reverse = name == "output_empty_reverse";
+        if(name == "output_empty_slide") slideConfig={{{0,0,0},{50,0,0}}};
+        const bool explicitSteering = name == "output_explicit_no_path";
+        if(explicitSteering) { mainVehicle.useDefaultPath=false; pControl->steering=0.25; }
+        mainVehicle.drive();
+        require(obs(0).speed==(explicitSteering ? 8 : 0),"invalid path did not stop or disabled explicit steering");
+        require(obs(0).steering==(explicitSteering ? 0.25 : 0),"invalid path produced stale/nonfinite steering");
+        require(obs(0).gear==(mainVehicle.reverse ? Gear::ESimOne_Gear_Mode_Reverse : Gear::ESimOne_Gear_Mode_Drive),
+                "path failure stop overwritten by reverse/sliding");
+        require(lightSends==1 && lastLights==4,"path failure lost light request");
+        if(name == "output_empty_recovery") {
+            targetPath={{0,0,0},{10,1,0},{20,2,0}};
+            mainVehicle.update(); mainVehicle.drive();
+            require(obs(1).speed==8,"valid path did not recover");
+        }
+        return true;
+    }
     if (name == "output_follow_stop" || name == "output_follow_slow" || name == "output_follow_stop_resume") {
         const bool slow = name == "output_follow_slow";
         pControl->throttle = followingTargetForTest(slow ? 45 : 20, slow ? 2.0f : 0.1f);

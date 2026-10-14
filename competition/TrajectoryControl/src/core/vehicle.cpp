@@ -217,12 +217,20 @@ void MainVehicle::rebuildNeighborhood(void)
 // 更新主车控制参数
 void MainVehicle::drive(void)
 {
+	const bool invalidDefaultPath = useDefaultPath && targetPath.size() < 2;
+	if (invalidDefaultPath)
+	{
+		LOG << "循迹路径不足两个点：跳过转向计算并请求停车";
+		pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
+		pControl->throttle = 0.0f;
+		pControl->steering = 0.0f;
+	}
 	// Speed 模式的 0 表示停车请求，不能被后续倒车速度或溜车空挡覆盖。
 	// Percent 模式的 0 仅表示松油门，不能据此要求停车。
 	const bool stopRequested = pControl->throttleMode == ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed
 		&& pControl->throttle == 0.0f;
 
-	if (useDefaultPath) // 如果使用默认路径，PID 控制器结合纯追踪算法处理目标路径，计算前轮打角
+	if (useDefaultPath && !invalidDefaultPath) // 有效路径才允许进入纯追踪转向计算
 	{
 		size_t carIndex;
 		double curvature;
