@@ -1,4 +1,4 @@
-"""Stop behind a stationary vehicle on a verified straight Town01 lane.
+"""Follow a stationary or stop-go lead on a verified straight Town01 lane.
 
 Exclusive local CARLA server required: loads Town01 if necessary.
 Default: compile and run production nearest-obstacle and following-speed bodies.
@@ -18,9 +18,11 @@ import time
 if __package__:
     from .competition_stop import StopController
     from .competition_following import FollowingController
+    from .lead_profile import StopGoProfile, assess_stop_go
 else:
     from competition_stop import StopController
     from competition_following import FollowingController
+    from lead_profile import StopGoProfile, assess_stop_go
 
 
 def speed_actuators(target, speed):
@@ -81,6 +83,7 @@ def stop_command(gap, speed, cruise, stop_gap):
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--scenario', choices=('stationary', 'stop-go'), default='stationary')
     parser.add_argument('--controller', choices=('formal-follow', 'experimental'), default='formal-follow',
                         help='Production following code by default; experimental retains the old Python planner')
     parser.add_argument('--speed-kmh', type=float, default=10.0)
@@ -102,6 +105,11 @@ def parse_args():
         parser.error('Initial gap: stop-gap+5..65 m; timeout: 5..120 s')
     if not 0 < args.dwell_seconds < args.timeout or not 0.02 <= args.fixed_delta_seconds <= 0.1:
         parser.error('Dwell must be >0 and <timeout; simulation step must be 0.02..0.1 s')
+    if args.scenario == 'stop-go':
+        if args.controller != 'formal-follow':
+            parser.error('Stop-go requires formal-follow')
+        if args.timeout < StopGoProfile(speed=args.speed_kmh / 3.6).end_time:
+            parser.error('Timeout must cover the complete stop-go profile')
     if args.output is None:
         args.output = Path('work/carla') / datetime.now().strftime('stationary-stop-%Y%m%d-%H%M%S-%f')
     if args.output.exists() and (not args.output.is_dir() or any(args.output.iterdir())):
@@ -118,6 +126,7 @@ def run(args):
     shared = None
     following = None
     dt = args.fixed_delta_seconds
+    profile = StopGoProfile(speed=args.speed_kmh / 3.6) if args.scenario == 'stop-go' else None
     report = dict(passed=False, competition_verified=False, input_source='CARLA ground truth',
                   parameters={k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
                   source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
@@ -139,6 +148,13 @@ def run(args):
                           stop_core_role='observer only: never overrides production speed',
                           input_mapping='straight lane: ego s=0; obstacle s=projected actor-origin separation; static, same road/lane',
                           limitations='no production Obstacle constructor, map queries, main_follow loop, drive(), lateral control or SimOne SDK')
+            if profile:
+                report.update(case_index=following.parameters['caseStop'],
+                              lead_profile=vars(profile),
+                              input_mapping='straight lane actor-origin separation; analytic lead speed; static below 0.01 m/s, otherwise same-direction',
+                              acceptance=dict(gap_m=[10, 50], standstill_seconds=2, recovery_speed_mps=1,
+                                  scope='auxiliary stop-go stimulus; fixed hold, not official reactive restart sequence'),
+                              lead_profile_sha256=hashlib.sha256(Path(__file__).with_name('lead_profile.py').read_bytes()).hexdigest())
         report.update(client_version=client.get_client_version(), server_version=client.get_server_version())
         if report['client_version'] != '0.9.15' or report['server_version'] != '0.9.15':
             raise RuntimeError('This experiment requires CARLA client and server 0.9.15')
@@ -163,7 +179,7 @@ def run(args):
         for spawn in road_map.get_spawn_points():
             wp = road_map.get_waypoint(spawn.location)
             forward = wp.transform.get_forward_vector()
-            length = args.gap + 20
+            length = args.gap + 20 + (profile.sample(profile.end_time)[0] if profile else 0)
             samples = [wp]
             for distance in range(2, math.ceil(length) + 1, 2):
                 candidates = wp.next(float(distance))
@@ -264,6 +280,16 @@ def run(args):
 
         snapshot = world.get_snapshot()
         first = measure(snapshot)
+        first['elapsed'] = 0.0
+
+        def validate_state(state):
+            if state['gap_m'] <= 0 or collisions:
+                raise RuntimeError('Collision or body overlap detected')
+            if abs(state['lateral_m']) > 0.4 or abs(state['yaw_error_deg']) > 3:
+                raise RuntimeError('Vehicle left the supported straight-line corridor')
+            distance = profile.sample(state['time'] - first['time'])[0] if profile else 0
+            if abs(state['lead_displacement_m'] - distance) > 0.05:
+                raise RuntimeError('Lead vehicle differs from prescribed position')
         report.update(map=road_map.name, vehicle=ego.type_id, initial=first,
                       ego_box_extent=dict(x=ego.bounding_box.extent.x, y=ego.bounding_box.extent.y),
                       road_id=wp.road_id, lane_id=wp.lane_id, fixed_delta_seconds=dt)
@@ -275,16 +301,16 @@ def run(args):
         for step in range(round(args.timeout / dt)):
             started = time.monotonic()
             state = measure(snapshot)
-            if state['gap_m'] <= 0 or collisions:
-                raise RuntimeError('Collision or body overlap detected')
-            if abs(state['lateral_m']) > 0.4 or abs(state['yaw_error_deg']) > 3:
-                raise RuntimeError('Vehicle left the supported straight-line corridor')
-            if state['lead_displacement_m'] > 0.05:
-                raise RuntimeError('Lead vehicle moved')
+            state['elapsed'] = state['time'] - first['time']
+            lead_distance, lead_speed, lead_phase = profile.sample(state['elapsed']) if profile else (0, 0, 'stationary')
+            state.update(lead_speed_mps=lead_speed, lead_phase=lead_phase,
+                         lead_position_error_m=abs(state['lead_displacement_m'] - lead_distance))
+            validate_state(state)
             formal = None
             if following is not None:
                 formal = following.step(0, state['speed_mps'],
-                        [(state['longitudinal_origin_distance_m'], 0, 0, 1, 1)], case_index=2)
+                        [(state['longitudinal_origin_distance_m'], lead_speed, 0 if lead_speed < 0.01 else 2, 1, 1)],
+                        case_index=report['case_index'])
                 target = formal['target_speed']
                 throttle, brake = speed_actuators(target, state['speed_mps'])
             else:
@@ -300,6 +326,10 @@ def run(args):
             if stop.phase == 'invalid':
                 raise RuntimeError('Shared stop controller rejected discontinuous or invalid frame input')
             ego.apply_control(carla.VehicleControl(throttle=throttle, brake=brake))
+            if profile:
+                distance = profile.sample(state['elapsed'] + dt)[0]
+                lead.set_transform(carla.Transform(
+                    lead_origin + carla.Location(*(v * distance for v in axis)), lt.rotation))
             world.get_spectator().set_transform(camera.get_transform())
             frame = world.tick(20.0)
             after = world.get_snapshot()
@@ -310,12 +340,15 @@ def run(args):
                              stop_phase=stop.phase, controller_held_seconds=stop.held_seconds,
                              dwell_ready=stop.ready, result_time=result['time'],
                              result_frame=frame, result_gap_m=result['gap_m'], result_speed_mps=result['speed_mps']))
+            validate_state(result)
             name = 'start.png' if step == 0 else None
             if brake > 0.05 and not braking_saved:
                 name, braking_saved = 'braking.png', True
             if stop.ready and target == 0 and result['speed_mps'] <= 0.1:
                 name = 'stopped.png'
             elif step == round(args.timeout / dt) - 1:
+                name = 'final.png'
+            if profile and result['time'] - first['time'] >= profile.end_time:
                 name = 'final.png'
             if name:
                 save_image(frame, name)
@@ -327,9 +360,12 @@ def run(args):
             snapshot = after
             if not args.no_realtime:
                 time.sleep(max(0.0, dt - (time.monotonic() - started)))
-            if stop.ready and target == 0 and result['speed_mps'] <= 0.1:
+            if not profile and stop.ready and target == 0 and result['speed_mps'] <= 0.1:
+                break
+            if profile and result['time'] - first['time'] >= profile.end_time:
                 break
         final = measure(snapshot)
+        final['elapsed'] = final['time'] - first['time']
         observed = observed_dwell(rows + [final], args.stop_gap)
         duration_ok = observed > args.dwell_seconds if args.exclusive_dwell else observed >= args.dwell_seconds
         report.update(final=final, frames=len(rows), stop_held_seconds=observed,
@@ -345,7 +381,12 @@ def run(args):
                               and (following is None or rows[-1]['formal_target_speed_mps'] == 0)
                               and abs(final['gap_m'] - args.stop_gap) <= 0.5
                               and final['gap_m'] > 0 and not collisions))
-        if not report['passed']:
+        if profile:
+            assessment = assess_stop_go(rows + [final], profile)
+            report.update(stop_go_assessment=assessment, passed=assessment['passed'] and not collisions)
+            if not report['passed']:
+                report['error'] = assessment['error']
+        elif not report['passed']:
             reasons = []
             if abs(final['gap_m'] - args.stop_gap) > 0.5:
                 reasons.append('Final gap outside +/-0.5 m experimental tolerance')
