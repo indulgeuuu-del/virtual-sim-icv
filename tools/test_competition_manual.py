@@ -82,7 +82,8 @@ def main():
                    'transition_route_failure', 'fractional_stop', 'reentry',
                    'timing_moving', 'timing_paused', 'timing_roll_again', 'timing_leave_zone',
                    'timing_bad_gps', 'timing_clock_backwards', 'timing_gap', 'timing_boundary',
-                   'timing_switch_stop', 'timing_bad_obstacle'])
+                   'timing_switch_stop', 'timing_bad_obstacle', 'timing_bad_projection',
+                   'timing_projection_drive', 'timing_projection_switch'])
 
         # Strategy files: the complete production manual.cpp with its real json.hpp;
         # only SDK types, logger and the SimOne install directory are replaced.

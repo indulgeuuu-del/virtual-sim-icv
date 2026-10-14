@@ -93,7 +93,7 @@ struct SimOne_Data_Gps {
     long long timestamp = 0;
 };
 inline auto pGps = std::make_unique<SimOne_Data_Gps>();
-struct FrameInput { double x, speed; long long timestamp; bool valid = true; bool obstacleValid = true; };
+struct FrameInput { double x, speed; long long timestamp; bool valid = true; bool obstacleValid = true; bool distanceValid = true; };
 inline std::vector<FrameInput> frameInputs;
 struct SpeedNeighborhood {
     float vf=0,vb=0,vl=0,vr=0,vlf=0,vrf=0,vlb=0,vrb=0;
@@ -154,7 +154,11 @@ inline double planarDistance(const SSD::SimPoint3D& a, const SSD::SimPoint3D& b)
     return std::hypot(a.x-b.x, a.y-b.y);
 }
 }
+inline int distanceReads=0;
+inline std::set<int> failingDistanceReads;
 inline float getDistS(const SSD::SimPoint3D& a, const SSD::SimPoint3D& b) {
+    if (failingDistanceReads.count(++distanceReads)) return std::nanf("");
+    if (!frameInputs.empty() && !frameInputs.at(waits-1).distanceValid) return std::nanf("");
     return static_cast<float>(b.x-a.x); // signed lane-s distance, as in process.cpp
 }
 // A failed call leaves partial garbage in out, so callers must not trust it.

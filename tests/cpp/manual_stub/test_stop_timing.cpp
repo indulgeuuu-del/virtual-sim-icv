@@ -6,6 +6,16 @@ bool stopTimingTest(const std::string& name) {
     frameLimit = 13;
     for (int i=0; i<frameLimit; ++i) frameInputs.push_back({0, 0, i*100});
     size_t resume = 5;
+    if (name == "timing_projection_drive" || name == "timing_projection_switch") {
+        strategyPoint.clear(); frameLimit=3; frameInputs.resize(3);
+        const bool switching=name=="timing_projection_switch";
+        if(switching) { strategyPoint.push_back(point(0,6)); strategyPoint.push_back(point(100,9)); failingDistanceReads={3}; }
+        else { strategyPoint.push_back(point(100,6)); frameInputs[0].distanceValid=false; }
+        runFrames();
+        require(obs(switching ? 1 : 0).speed==0,"invalid projection did not stop moving strategy");
+        require(obs(2).speed==(switching ? 9 : 6),"valid projection failed to recover");
+        return true;
+    }
     if (name == "timing_moving") {
         for (int i=0; i<4; ++i) frameInputs[i].speed = 2;
         resume = 9;
@@ -23,6 +33,9 @@ bool stopTimingTest(const std::string& name) {
         resume = 9;
     } else if (name == "timing_bad_obstacle") {
         frameInputs[3].obstacleValid = false;
+        resume = 9;
+    } else if (name == "timing_bad_projection") {
+        frameInputs[3].distanceValid = false;
         resume = 9;
     } else if (name == "timing_clock_backwards") {
         for (int i=3;i<frameLimit;++i) frameInputs[i].timestamp = (i-3)*100;

@@ -92,6 +92,12 @@ int main_manual(void)
 		/* 如果 [dat1] == -1，[dat2] = defaut，否则 [dat2] = [dat1] */
 #define JudgeJsonData(DATA1, DATA2, DATA3) if (strategyPoint[currentIdx].DATA1 == -1) DATA2 = DATA3; else DATA2 = strategyPoint[currentIdx].DATA1
 		auto applyPointControl = [&]() {
+			if (!std::isfinite(distNextPoint)) {
+				stopController.invalidate();
+				pControl->throttle = 0;
+				LOG << "Invalid strategy-point projection: stop and retry without counting dwell";
+				return true;
+			}
 			JudgeJsonData(kp, steerKpUse, steerKp);
 			JudgeJsonData(stopTime, stopTime, -1);
 			JudgeJsonData(speed, pControl->throttle, caseTargetSpeed);

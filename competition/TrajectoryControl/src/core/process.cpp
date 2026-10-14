@@ -1,4 +1,4 @@
-#include <set>
+ï»¿#include <set>
 #include <memory>
 #include "SimOneServiceAPI.h"
 #include "SimOneSensorAPI.h"
@@ -9,32 +9,32 @@
 double getRoadWidth(const SSD::SimString& laneId, const SSD::SimPoint3D& pos)
 {
 	double totalWidth = 0.0;
-	std::set<SSD::SimString> visitedLanes; // ¼ÇÂ¼ÒÑ·ÃÎÊµÄ³µµÀ£¬±ÜÃâÖØ¸´¼ÆËã
+	std::set<SSD::SimString> visitedLanes; // è®°å½•å·²è®¿é—®çš„è½¦é“ï¼Œé¿å…é‡å¤è®¡ç®—
 
-	// Ê¹ÓÃ Lambda µİ¹é¼ÆËãÁÚ½Ó³µµÀµÄ×Ü¿í¶È£¬×¢£ºÄ£°åµİ¹éLambda£¨ÒşÊ½Y×éºÏ×ÓÄ£Ê½£©£¬ÓëÆÕÍ¨µİ¹éº¯ÊıÏàµ±£¨Áã¶îÍâ¿ªÏú£©
+	// ä½¿ç”¨ Lambda é€’å½’è®¡ç®—é‚»æ¥è½¦é“çš„æ€»å®½åº¦ï¼Œæ³¨ï¼šæ¨¡æ¿é€’å½’Lambdaï¼ˆéšå¼Yç»„åˆå­æ¨¡å¼ï¼‰ï¼Œä¸æ™®é€šé€’å½’å‡½æ•°ç›¸å½“ï¼ˆé›¶é¢å¤–å¼€é”€ï¼‰
 	auto getNeighborLaneWidth = [&](const SSD::SimString& laneId, const SSD::SimPoint3D& pos, auto& getNeighborLaneWidthRef) -> void {
-		// ·ÀÖ¹ÖØ¸´·ÃÎÊ
+		// é˜²æ­¢é‡å¤è®¿é—®
 		if (visitedLanes.find(laneId) != visitedLanes.end()) return;
 		visitedLanes.insert(laneId);
 
-		// »ñÈ¡µ±Ç°³µµÀµÄ¿í¶È
+		// è·å–å½“å‰è½¦é“çš„å®½åº¦
 		double laneWidth = 0.0;
 		if (SimOneAPI::GetLaneWidth(laneId, pos, laneWidth))
 		{
 			totalWidth += laneWidth;
 		}
 
-		// »ñÈ¡³µµÀÁ¬½ÓĞÅÏ¢
+		// è·å–è½¦é“è¿æ¥ä¿¡æ¯
 		HDMapStandalone::MLaneLink linkLane;
 		if (SimOneAPI::GetLaneLink(laneId, linkLane))
 		{
-			// µİ¹é»ñÈ¡×óÁÚ½Ó³µµÀµÄ¿í¶È
+			// é€’å½’è·å–å·¦é‚»æ¥è½¦é“çš„å®½åº¦
 			if (!linkLane.leftNeighborLaneName.Empty())
 			{
 				getNeighborLaneWidthRef(linkLane.leftNeighborLaneName, pos, getNeighborLaneWidthRef);
 			}
 
-			// µİ¹é»ñÈ¡ÓÒÁÚ½Ó³µµÀµÄ¿í¶È
+			// é€’å½’è·å–å³é‚»æ¥è½¦é“çš„å®½åº¦
 			if (!linkLane.rightNeighborLaneName.Empty())
 			{
 				getNeighborLaneWidthRef(linkLane.rightNeighborLaneName, pos, getNeighborLaneWidthRef);
@@ -42,7 +42,7 @@ double getRoadWidth(const SSD::SimString& laneId, const SSD::SimPoint3D& pos)
 		}
 		};
 
-	// ¼ÆËãµ±Ç°³µµÀ¼°ÆäÁÚ½Ó³µµÀµÄ×Ü¿í¶È
+	// è®¡ç®—å½“å‰è½¦é“åŠå…¶é‚»æ¥è½¦é“çš„æ€»å®½åº¦
 	getNeighborLaneWidth(laneId, pos, getNeighborLaneWidth);
 
 	return totalWidth;
@@ -64,7 +64,7 @@ bool getValidTrafficLight(const SSD::SimVector<HDMapStandalone::MSignal>& list, 
 		SimOneAPI::GetTrafficLight(mainVehicle.id, list[i].id, pTrafficLight.get());
 		if (pTrafficLight->isMainVehicleNextTrafficLight)
 		{
-			if (pTrafficLight->status == ESimOne_TrafficLight_Status::ESimOne_TrafficLight_Status_Red || pTrafficLight->status == ESimOne_TrafficLight_Status::ESimOne_TrafficLight_Status_Yellow) // ºìµÆ¡¢»ÆµÆ
+			if (pTrafficLight->status == ESimOne_TrafficLight_Status::ESimOne_TrafficLight_Status_Red || pTrafficLight->status == ESimOne_TrafficLight_Status::ESimOne_TrafficLight_Status_Yellow) // çº¢ç¯ã€é»„ç¯
 			{
 				light = list[i];
 				return true;
@@ -74,11 +74,11 @@ bool getValidTrafficLight(const SSD::SimVector<HDMapStandalone::MSignal>& list, 
 	return false;
 }
 
-// ÅĞ¶ÏÖ÷³µ¹ì¼£ÊÇ·ñÉæ¼°±äµÀ¹ı³Ì
+// åˆ¤æ–­ä¸»è½¦è½¨è¿¹æ˜¯å¦æ¶‰åŠå˜é“è¿‡ç¨‹
 bool isPathRequireLaneChange(const SSD::SimVector<SSD::SimPoint3D>& path)
 {
 	if (targetPath.size() < 2) {
-		return false; // Â·¾¶¹ı¶Ì£¬ÎŞ·¨ÅĞ¶Ï
+		return false; // è·¯å¾„è¿‡çŸ­ï¼Œæ— æ³•åˆ¤æ–­
 	}
 	SSD::SimString srcLaneId = m_SampleGetNearMostLane(path[0]);
 	SSD::SimString dstLaneId = m_SampleGetNearMostLane(path.back());
@@ -86,26 +86,26 @@ bool isPathRequireLaneChange(const SSD::SimVector<SSD::SimPoint3D>& path)
 	return false;
 }
 
-// ÅĞ¶ÏÖ÷³µ¹ì¼£Óë¶ÔÊÖ³µÁ¾¹ì¼£ÊÇ·ñ»á²úÉú¸ÉÉæ
+// åˆ¤æ–­ä¸»è½¦è½¨è¿¹ä¸å¯¹æ‰‹è½¦è¾†è½¨è¿¹æ˜¯å¦ä¼šäº§ç”Ÿå¹²æ¶‰
 bool isTrajInterfere(const SSD::SimVector<SSD::SimPoint3D>& path, const Obstacle& obstacle)
 {
 	auto arePointsOnSameSide = [](const SSD::SimPoint3D& pt1, const SSD::SimPoint3D& pt2, const SSD::SimPoint3D& linePoint, float azimuthDeg) {
-		// ¼ÆËãÖ±ÏßµÄ·½ÏòÏòÁ¿
+		// è®¡ç®—ç›´çº¿çš„æ–¹å‘å‘é‡
 		float azimuth = azimuthDeg * 3.14159265358979323846f / 180.0f;
 		SSD::SimPoint3D lineDirection = { cos(azimuth), sin(azimuth), 0.0f };
-		// ¼ÆËãÆğµãºÍÖÕµãÏà¶ÔÓÚÖ±ÏßµÄÎ»ÖÃ
+		// è®¡ç®—èµ·ç‚¹å’Œç»ˆç‚¹ç›¸å¯¹äºç›´çº¿çš„ä½ç½®
 		float cross1 = crossProduct(linePoint, lineDirection, pt1);
 		float cross2 = crossProduct(linePoint, lineDirection, pt2);
-		// ÅĞ¶ÏËüÃÇÊÇ·ñÔÚÖ±ÏßµÄÍ¬Ò»²à
-		return (cross1 * cross2 >= 0);  // ²æ»ıµÄ·ûºÅÏàÍ¬£¬±íÊ¾ÔÚÍ¬Ò»²à
+		// åˆ¤æ–­å®ƒä»¬æ˜¯å¦åœ¨ç›´çº¿çš„åŒä¸€ä¾§
+		return (cross1 * cross2 >= 0);  // å‰ç§¯çš„ç¬¦å·ç›¸åŒï¼Œè¡¨ç¤ºåœ¨åŒä¸€ä¾§
 		};
 
-	// ÅĞ¶Ï¹ì¼£ÆğµãºÍÖÕµãÊÇ·ñÔÚËÙ¶ÈÊ¸Á¿µÄÍ¬Ò»²à
+	// åˆ¤æ–­è½¨è¿¹èµ·ç‚¹å’Œç»ˆç‚¹æ˜¯å¦åœ¨é€Ÿåº¦çŸ¢é‡çš„åŒä¸€ä¾§
 	//return arePointsOnSameSide(path[0], path.back(), obstacle.pt, mainVehicle.laneAzimuth);
 	return arePointsOnSameSide(mainVehicle.pt, path.back(), obstacle.pt, mainVehicle.laneAzimuth);
 }
 
-// ÅĞ¶ÏÁ½ÌõµÀÂ·ÊÇ·ñ¾ßÓĞÏàÍ¬µÄµÀÂ· Road ID
+// åˆ¤æ–­ä¸¤æ¡é“è·¯æ˜¯å¦å…·æœ‰ç›¸åŒçš„é“è·¯ Road ID
 bool isSameRoadId(const SSD::SimString& roadStr1, const SSD::SimString& roadStr2)
 {
 	std::string str1(roadStr1.GetString());
@@ -116,7 +116,7 @@ bool isSameRoadId(const SSD::SimString& roadStr1, const SSD::SimString& roadStr2
 
 	if (pos1 == std::string::npos || pos2 == std::string::npos)
 	{
-		return false; // ¸ñÊ½²»ÕıÈ·£¬ÎŞ·¨±È½Ï
+		return false; // æ ¼å¼ä¸æ­£ç¡®ï¼Œæ— æ³•æ¯”è¾ƒ
 	}
 
 	return str1.substr(0, pos1) == str2.substr(0, pos2);
@@ -126,25 +126,38 @@ bool isSameRoadId(const SSD::SimPoint3D& p1, const SSD::SimPoint3D& p2)
 	return isSameRoadId(m_SampleGetNearMostLane(p1), m_SampleGetNearMostLane(p2));
 }
 
-// »ñÈ¡Á½¸öµãÖ®¼äµÄ st ¾àÀë
+// è·å–ä¸¤ä¸ªç‚¹ä¹‹é—´çš„ st è·ç¦»
 float getDistS(const SSD::SimPoint3D& currentPos, const SSD::SimPoint3D& target)
 {
 	SSD::SimString currentPosLaneId = m_SampleGetNearMostLane(currentPos);
 	SSD::SimString targetPosLaneId = m_SampleGetNearMostLane(target);
+	if (currentPosLaneId.Empty() || targetPosLaneId.Empty())
+	{
+		globalLogger(Logger::Color::BrightGreen) << "Invalid lane for longitudinal distance";
+		return std::numeric_limits<float>::quiet_NaN();
+	}
 
 	if (isSameRoadId(currentPosLaneId, targetPosLaneId))
 	{
-		double currentPos_s, currentPos_t, targetPos_s, targetPos_t;
+		double currentPos_s = 0, currentPos_t = 0, targetPos_s = 0, targetPos_t = 0;
 		if (!SimOneAPI::GetLaneST(currentPosLaneId, currentPos, currentPos_s, currentPos_t))
 		{
-			globalLogger(Logger::Color::BrightGreen) << "»ñÈ¡Á½¸öµãÖ®¼äµÄ ST ¾àÀëÊ±£¬Ö÷³µ ST ×ø±ê»ñÈ¡Ê§°Ü";
+			globalLogger(Logger::Color::BrightGreen) << "è·å–ä¸¤ä¸ªç‚¹ä¹‹é—´çš„ ST è·ç¦»æ—¶ï¼Œä¸»è½¦ ST åæ ‡è·å–å¤±è´¥";
+			return std::numeric_limits<float>::quiet_NaN();
 		}
 		if (!SimOneAPI::GetLaneST(currentPosLaneId, target, targetPos_s, targetPos_t))
 		{
-			globalLogger(Logger::Color::BrightGreen) << "»ñÈ¡Á½¸öµãÖ®¼äµÄ ST ¾àÀëÊ±£¬Ä¿±êµã ST ×ø±ê»ñÈ¡Ê§°Ü";
+			globalLogger(Logger::Color::BrightGreen) << "è·å–ä¸¤ä¸ªç‚¹ä¹‹é—´çš„ ST è·ç¦»æ—¶ï¼Œç›®æ ‡ç‚¹ ST åæ ‡è·å–å¤±è´¥";
+			return std::numeric_limits<float>::quiet_NaN();
 		}
 
-		return static_cast<float>(targetPos_s - currentPos_s);
+		const float distance = static_cast<float>(targetPos_s - currentPos_s);
+		if (!std::isfinite(distance))
+		{
+			globalLogger(Logger::Color::BrightGreen) << "Invalid longitudinal projection value";
+			return std::numeric_limits<float>::quiet_NaN();
+		}
+		return distance;
 	}
 
 	return std::numeric_limits<float>::max();
@@ -158,11 +171,11 @@ float getDistT(const SSD::SimPoint3D& currentPos, const SSD::SimPoint3D& target)
 		double currentPos_s, currentPos_t, targetPos_s, targetPos_t;
 		if (!SimOneAPI::GetLaneST(currentPosLaneId, currentPos, currentPos_s, currentPos_t))
 		{
-			globalLogger(Logger::Color::BrightGreen) << "»ñÈ¡Á½¸öµãÖ®¼äµÄ ST ¾àÀëÊ±£¬Ö÷³µ ST ×ø±ê»ñÈ¡Ê§°Ü";
+			globalLogger(Logger::Color::BrightGreen) << "è·å–ä¸¤ä¸ªç‚¹ä¹‹é—´çš„ ST è·ç¦»æ—¶ï¼Œä¸»è½¦ ST åæ ‡è·å–å¤±è´¥";
 		}
 		if (!SimOneAPI::GetLaneST(currentPosLaneId, target, targetPos_s, targetPos_t))
 		{
-			globalLogger(Logger::Color::BrightGreen) << "»ñÈ¡Á½¸öµãÖ®¼äµÄ ST ¾àÀëÊ±£¬Ä¿±êµã ST ×ø±ê»ñÈ¡Ê§°Ü";
+			globalLogger(Logger::Color::BrightGreen) << "è·å–ä¸¤ä¸ªç‚¹ä¹‹é—´çš„ ST è·ç¦»æ—¶ï¼Œç›®æ ‡ç‚¹ ST åæ ‡è·å–å¤±è´¥";
 		}
 
 		return static_cast<float>(targetPos_t - currentPos_t);
@@ -178,18 +191,18 @@ float getDistT(const SSD::SimPoint3D& currentPos, const SimOne_Data_Vec3f& targe
 		double currentPos_s, currentPos_t, targetPos_s, targetPos_t;
 		if (!SimOneAPI::GetLaneST(currentPosLaneId, currentPos, currentPos_s, currentPos_t))
 		{
-			globalLogger(Logger::Color::BrightGreen) << "»ñÈ¡Á½¸öµãÖ®¼äµÄ ST ¾àÀëÊ±£¬Ö÷³µ ST ×ø±ê»ñÈ¡Ê§°Ü";
+			globalLogger(Logger::Color::BrightGreen) << "è·å–ä¸¤ä¸ªç‚¹ä¹‹é—´çš„ ST è·ç¦»æ—¶ï¼Œä¸»è½¦ ST åæ ‡è·å–å¤±è´¥";
 		}
 		if (!SimOneAPI::GetLaneST(currentPosLaneId, point, targetPos_s, targetPos_t))
 		{
-			globalLogger(Logger::Color::BrightGreen) << "»ñÈ¡Á½¸öµãÖ®¼äµÄ ST ¾àÀëÊ±£¬Ä¿±êµã ST ×ø±ê»ñÈ¡Ê§°Ü";
+			globalLogger(Logger::Color::BrightGreen) << "è·å–ä¸¤ä¸ªç‚¹ä¹‹é—´çš„ ST è·ç¦»æ—¶ï¼Œç›®æ ‡ç‚¹ ST åæ ‡è·å–å¤±è´¥";
 		}
 
 		return static_cast<float>(targetPos_t - currentPos_t);
 	}
 }
 
-// ²é¿´ÓĞÎŞ°ßÂíÏß
+// æŸ¥çœ‹æœ‰æ— æ–‘é©¬çº¿
 bool getCrossWalk(void)
 {
 	SimOneAPI::GetSpecifiedLaneCrosswalkList(mainVehicle.laneID, crosswalkList);
@@ -225,7 +238,7 @@ bool equidistantSampling(const SSD::SimPoint3DVector& initPath, SSD::SimPoint3DV
 		acc -= segLen;
 	}
 	targetPath.push_back(initPath.back());
-	if (targetPath.size() <= 1) return false; // Èç¹ûÖ»ÓĞÆğµã£¬¾Íµ±×÷Ê§°Ü
+	if (targetPath.size() <= 1) return false; // å¦‚æœåªæœ‰èµ·ç‚¹ï¼Œå°±å½“ä½œå¤±è´¥
 	return true;
 }
 
@@ -234,44 +247,44 @@ static double dist3D(const SSD::SimPoint3D& a, const SSD::SimPoint3D& b) {
 	return std::sqrt(dx * dx + dy * dy);
 }
 static double curvatureByHeron(const SSD::SimPoint3D& p1, const SSD::SimPoint3D& p2, const SSD::SimPoint3D& p3) {
-	// ÈıÌõ±ß³¤
+	// ä¸‰æ¡è¾¹é•¿
 	double a = dist3D(p1, p2);
 	double b = dist3D(p2, p3);
 	double c = dist3D(p3, p1);
 
-	// º£Â×¹«Ê½°ëÖÜ³¤
+	// æµ·ä¼¦å…¬å¼åŠå‘¨é•¿
 	double s = 0.5 * (a + b + c);
-	// Èı½ÇĞÎÃæ»ı
+	// ä¸‰è§’å½¢é¢ç§¯
 	double area2 = s * (s - a) * (s - b) * (s - c);
-	if (area2 <= 1e-12) return 0.0;  // ¹²Ïß»òÍË»¯
+	if (area2 <= 1e-12) return 0.0;  // å…±çº¿æˆ–é€€åŒ–
 
 	double area = std::sqrt(area2);
-	// Íâ½ÓÔ²°ë¾¶
+	// å¤–æ¥åœ†åŠå¾„
 	double R = (a * b * c) / (4.0 * area);
 	if (R < 1e-6) return 0.0;
 	return 1.0 / R;
 }
-// ¼ÆËãÕû¶Î¹ì¼£µÄ¼ÓÈ¨Æ½¾ù¾Ö²¿ÈıµãÇúÂÊ
+// è®¡ç®—æ•´æ®µè½¨è¿¹çš„åŠ æƒå¹³å‡å±€éƒ¨ä¸‰ç‚¹æ›²ç‡
 double approximateCurvature(const std::vector<SSD::SimPoint3D>& pts, double sampleArcDist, double minValidCurv)
 {
 	size_t N = pts.size();
 	if (N < 3) return 0.0;
 
-	// 1. Ô¤¼ÆËãÀÛ»ı»¡³¤ s[i]
+	// 1. é¢„è®¡ç®—ç´¯ç§¯å¼§é•¿ s[i]
 	std::vector<double> s(N, 0.0);
 	for (size_t i = 1; i < N; ++i) {
 		s[i] = s[i - 1] + dist3D(pts[i - 1], pts[i]);
 	}
 
-	// 2. »¬¶¯²ÉÑù£º¶ÔÓÚÃ¿¸öi£¬ÏòÇ°ºó¸÷ÕÒÒ»¸öµã£¬Ê¹µÃ»¡³¤¼ä¸ô ¡Ö sampleArcDist
+	// 2. æ»‘åŠ¨é‡‡æ ·ï¼šå¯¹äºæ¯ä¸ªiï¼Œå‘å‰åå„æ‰¾ä¸€ä¸ªç‚¹ï¼Œä½¿å¾—å¼§é•¿é—´éš” â‰ˆ sampleArcDist
 	std::vector<double> curvs;
 	size_t j = 0, k = 0;
 	for (size_t i = 0; i < N; ++i) {
 		double si = s[i];
 
-		// ÏòºóÍÆ k Ö±µ½ s[k] - si >= sampleArcDist
+		// å‘åæ¨ k ç›´åˆ° s[k] - si >= sampleArcDist
 		while (k < N && s[k] - si < sampleArcDist) ++k;
-		// ÏòÇ°ÍÆ j Ö±µ½ si - s[j] < sampleArcDist£¬¹Ê j-1 ÊÇÎÒÃÇÒªµÄ
+		// å‘å‰æ¨ j ç›´åˆ° si - s[j] < sampleArcDistï¼Œæ•… j-1 æ˜¯æˆ‘ä»¬è¦çš„
 		while (j < i && si - s[j] >= sampleArcDist) ++j;
 
 		if (j > 0 && k < N) {
@@ -280,7 +293,7 @@ double approximateCurvature(const std::vector<SSD::SimPoint3D>& pts, double samp
 		}
 	}
 
-	// 3. È¡Æ½¾ù
+	// 3. å–å¹³å‡
 	if (curvs.empty()) return 0.0;
 	double sum = std::accumulate(curvs.begin(), curvs.end(), 0.0);
 	return sum / curvs.size();

@@ -24,7 +24,8 @@ LOOP_TESTS = (
     'transition_route_failure', 'fractional_stop', 'reentry',
     'timing_moving', 'timing_paused', 'timing_roll_again', 'timing_leave_zone',
     'timing_bad_gps', 'timing_clock_backwards', 'timing_gap', 'timing_boundary',
-    'timing_switch_stop', 'timing_bad_obstacle',
+    'timing_switch_stop', 'timing_bad_obstacle', 'timing_bad_projection',
+    'timing_projection_drive', 'timing_projection_switch',
 )
 OUTPUT_TESTS = (
     'output_stop_forward', 'output_stop_reverse', 'output_stop_slide',
@@ -102,6 +103,7 @@ def main():
             root / 'tests/cpp/following_drive_support.cpp',
             root / 'tests/cpp/follow_input_stub/main.h', root / 'tests/cpp/follow_input_stub/test.cpp',
             root / 'tests/cpp/navigation_test.cpp',
+            root / 'tests/cpp/lane_distance_test.cpp',
             root / 'tests/cpp/track_speed_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
@@ -134,6 +136,11 @@ def main():
         if navigation_harness.count('// @NAVIGATION@') != 1:
             raise ValueError('missing navigation insertion point')
         (output / 'navigation.cpp').write_bytes(navigation_harness.replace('// @NAVIGATION@', navigation).encode('utf-8'))
+        lane_distance = between(sources['TrajectoryControl/src/core/process.cpp'], 'float getDistS(', 'float getDistT(')
+        distance_harness = read_source(root / 'tests/cpp/lane_distance_test.cpp')
+        if distance_harness.count('// @LONGITUDINAL_DISTANCE@') != 1:
+            raise ValueError('missing distance insertion point')
+        (output / 'lane_distance.cpp').write_bytes(distance_harness.replace('// @LONGITUDINAL_DISTANCE@', lane_distance).encode('utf-8'))
 
         drive_dir = output / 'drive'
         drive_dir.mkdir(exist_ok=True)
@@ -235,6 +242,8 @@ def main():
         compile_run(output, ['navigation.cpp'], ['waypoint_failure', 'zero_waypoints', 'route_failure',
                     'empty_route', 'short_route', 'lane_failure', 'empty_lane', 'short_lane',
                     'route_success', 'lane_success', 'repeat', 'recovery'], 'navigation')
+        compile_run(output, ['lane_distance.cpp'], ['forward', 'backward', 'different_road', 'current_failure',
+                    'target_failure', 'missing_lane', 'nonfinite'], 'lane_distance')
         compile_run(drive_dir, ['main_manual.cpp', 'drive.cpp', 'following.cpp', 'track_speed.cpp', 'test_main.cpp'],
                     LOOP_TESTS + OUTPUT_TESTS, 'drive', ['/DTEST_REAL_DRIVE'])
         compile_run(follow_dir, ['main_follow.cpp', 'support.cpp', 'test.cpp'],
