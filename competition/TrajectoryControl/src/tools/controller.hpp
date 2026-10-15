@@ -134,6 +134,12 @@ class AdaptiveFollowing {
 public:
 	AdaptiveFollowing(float kp, float ki, float kd, float _safeDistance) : pid(kp, ki, kd), safeDistance(_safeDistance), currentSpeed(0.0f) {}
 
+	void reset(void)
+	{
+		pid.reset();
+		currentSpeed = 0.0f;
+	}
+
 	void update(float frontCarSpeed, float frontCarDistance)
 	{
 		update(frontCarSpeed, frontCarDistance, safeDistance);

@@ -80,7 +80,7 @@ def build_library():
         raise RuntimeError(f'Following bridge compile failed; see {output / "compile.log"}')
     report = dict(source_sha256=hashes, binary_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                   extracted_sha256={name: hashlib.sha256(code.encode()).hexdigest() for name, code in sections.items()},
-                  toolset=env['VCToolsVersion'].strip(), abi_version=2, sdk_build_verified=False,
+                  toolset=env['VCToolsVersion'].strip(), abi_version=3, sdk_build_verified=False,
                   scope='production nearest-obstacle and following-speed bodies plus real AdaptiveFollowing/PID')
     manifest.write_text(json.dumps(report, indent=2), encoding='utf-8')
     return binary, report
@@ -114,6 +114,8 @@ class FollowingController:
         self._dll.following_create.restype = ctypes.c_void_p
         self._dll.following_destroy.argtypes = [ctypes.c_void_p]
         self._dll.following_destroy.restype = None
+        self._dll.following_reset.argtypes = [ctypes.c_void_p]
+        self._dll.following_reset.restype = ctypes.c_int
         self._dll.following_step.argtypes = [ctypes.c_void_p, ctypes.c_double, ctypes.c_double,
                 ctypes.POINTER(_Input), ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double,
                 ctypes.c_int, ctypes.c_double, ctypes.c_double, ctypes.c_double,
@@ -124,6 +126,24 @@ class FollowingController:
             raise ValueError('Invalid following configuration or allocation failure')
 
     def step(self, ego_s, ego_speed, obstacles, case_index=2, *, static_reference_offset=None, policy=None):
+        """Run the production controller; rejected input clears history before raising.
+
+        This exception is not a vehicle stop command. The caller must request a
+        safe stop or terminate its experiment before accepting another frame.
+        """
+        try:
+            return self._step(ego_s, ego_speed, obstacles, case_index,
+                              static_reference_offset=static_reference_offset, policy=policy)
+        except (ValueError, TypeError, OverflowError, ctypes.ArgumentError):
+            self.reset()
+            raise
+
+    def reset(self):
+        """Clear PID history for this controller only; retain its configured gains."""
+        if not getattr(self, '_handle', None) or not self._dll.following_reset(self._handle):
+            raise RuntimeError('Following controller is closed')
+
+    def _step(self, ego_s, ego_speed, obstacles, case_index=2, *, static_reference_offset=None, policy=None):
         """Obstacles: (lane-s, speed m/s, type 0..3, same-lane, same-road).
 
         lane-s is an absolute coordinate on the ego lane, not signed gap. Type 0

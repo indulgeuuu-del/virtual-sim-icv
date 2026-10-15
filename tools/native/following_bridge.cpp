@@ -43,6 +43,12 @@ API void* following_create(float kp, float ki, float kd, float minimum, int stop
     return new(std::nothrow) Context(kp, ki, kd, minimum, stopCase);
 }
 API void following_destroy(void* p) { delete static_cast<Context*>(p); }
+API int following_reset(void* p) {
+    if (!p) return 0;
+    const std::lock_guard<std::mutex> lock(boundaryMutex);
+    static_cast<Context*>(p)->following.reset();
+    return 1;
+}
 API int following_step(void* p, double egoS, double egoSpeed, const Input* input,
                        int count, int caseIndex, int useGeometry, double staticOffset,
                        int usePolicy, double movingGap, double stoppedGap, double maxSpeed, Output* out) {

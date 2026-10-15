@@ -5,6 +5,101 @@ from tools.competition_following import FollowingController, extract
 
 
 class FollowingTests(unittest.TestCase):
+    def test_policy_standstill_at_requested_gap_does_not_restart(self):
+        c = self.controller()
+        for gap in (1.99, 2.0):
+            for speed in (0, 0.01, 0.1):
+                result = c.step(0, speed, [(gap+5,0,0,1,1)], static_reference_offset=5,
+                                policy=dict(moving_gap_m=50, stopped_gap_m=2, max_speed_mps=8))
+                self.assertEqual(result['target_speed'], 0)
+
+    def test_policy_close_lead_classification_toggle_keeps_stop(self):
+        c = self.controller()
+        policy = dict(moving_gap_m=50, stopped_gap_m=2, max_speed_mps=8)
+        for velocity in (0.02, 0.01, 0.009, 0, 0.011, 0.009, 0):
+            kind = 0 if velocity < 0.01 else 2  # Same threshold as production Obstacle.
+            result = c.step(0, 0, [(7,velocity,kind,1,1)], static_reference_offset=5, policy=policy)
+            self.assertEqual(result['target_speed'], 0)
+        self.assertGreater(c.step(0, 0, [(55,3,2,1,1)], static_reference_offset=5, policy=policy)['target_speed'], 0)
+
+    def stateful_controller(self):
+        c = self.controller()
+        # Test nonzero integral gain without modifying repository configuration.
+        replacement = c._dll.following_create(-0.2, 0.1, 0, c.parameters['followingLimitSpeed'], c.parameters['caseStop'])
+        self.assertTrue(replacement)
+        c._dll.following_destroy(c._handle)
+        c._handle = replacement
+        return c
+
+    def test_policy_resets_history_after_static_or_absent_target(self):
+        policy = dict(moving_gap_m=50, stopped_gap_m=2, max_speed_mps=8)
+        for interrupted in ([], [(6.9,0,0,1,1)], [(55,3,2,0,1)]):
+            c = self.stateful_controller()
+            for _ in range(4):
+                c.step(0, 3, [(45,3,2,1,1)], static_reference_offset=5, policy=policy)
+            c.step(0, 0, interrupted, static_reference_offset=5, policy=policy)
+            resumed = c.step(0, 0, [(55,3,2,1,1)], static_reference_offset=5, policy=policy)
+            self.assertAlmostEqual(resumed['target_speed'], 3, places=5)
+
+    def test_policy_invalid_settings_reset_native_history(self):
+        import ctypes
+        from tools.competition_following import _Input, _Output
+        c = self.stateful_controller()
+        policy = dict(moving_gap_m=50, stopped_gap_m=2, max_speed_mps=8)
+        for _ in range(4):
+            c.step(0, 3, [(45,3,2,1,1)], static_reference_offset=5, policy=policy)
+        data = (_Input*1)(_Input(55,3,2,1,1))
+        out = _Output()
+        self.assertEqual(c._dll.following_step(c._handle,0,0,data,1,2,1,5,1,50,2,-1,ctypes.byref(out)),1)
+        self.assertEqual(out.target,0)
+        self.assertAlmostEqual(c.step(0,0,[(55,3,2,1,1)],static_reference_offset=5,policy=policy)['target_speed'],3,places=5)
+
+    def test_policy_zero_ceiling_does_not_accumulate_hidden_history(self):
+        c = self.stateful_controller()
+        for _ in range(4):
+            self.assertEqual(c.step(0,0,[(45,3,2,1,1)], static_reference_offset=5,
+                policy=dict(moving_gap_m=50,stopped_gap_m=2,max_speed_mps=0))['target_speed'],0)
+        resumed = c.step(0,0,[(55,3,2,1,1)],static_reference_offset=5,
+                         policy=dict(moving_gap_m=50,stopped_gap_m=2,max_speed_mps=8))
+        self.assertAlmostEqual(resumed['target_speed'],3,places=5)
+
+    def test_policy_valid_empty_list_and_slow_moving_lead_remain_usable(self):
+        c = self.controller()
+        policy = dict(moving_gap_m=50,stopped_gap_m=2,max_speed_mps=8)
+        self.assertEqual(c.step(0,0,[],static_reference_offset=5,policy=policy)['target_speed'],3)
+        for speed in (0.01,0.02,0.1,1):
+            self.assertAlmostEqual(c.step(0,0,[(55,speed,2,1,1)],static_reference_offset=5,
+                                         policy=policy)['target_speed'],speed,places=5)
+
+    def test_bridge_rejected_input_clears_history_before_recovery(self):
+        policy = dict(moving_gap_m=50,stopped_gap_m=2,max_speed_mps=8)
+        for bad_policy, bad_target in ((dict(policy,max_speed_mps=-1),[(55,3,2,1,1)]),
+                                       (policy,[(math.nan,3,2,1,1)])):
+            c = self.stateful_controller()
+            for _ in range(4):
+                c.step(0,3,[(45,3,2,1,1)],static_reference_offset=5,policy=policy)
+            with self.assertRaises(ValueError):
+                c.step(0,0,bad_target,static_reference_offset=5,policy=bad_policy)
+            self.assertAlmostEqual(c.step(0,0,[(55,3,2,1,1)],static_reference_offset=5,policy=policy)['target_speed'],3,places=5)
+
+    def test_reset_is_context_local_and_preserves_gains(self):
+        a, b = self.stateful_controller(), self.stateful_controller()
+        policy = dict(moving_gap_m=50,stopped_gap_m=2,max_speed_mps=8)
+        def prime(c):
+            for _ in range(4):
+                c.step(0,3,[(45,3,2,1,1)],static_reference_offset=5,policy=policy)
+        def observe(c):
+            return c.step(0,0,[(55,3,2,1,1)],static_reference_offset=5,policy=policy)['target_speed']
+        prime(a); prime(b)
+        a.reset()
+        self.assertEqual(observe(a),3)
+        self.assertEqual(observe(b),7)
+        prime(a)
+        self.assertEqual(observe(a),7)  # Integral gain was retained, not reset to config defaults.
+        a.close()
+        with self.assertRaises(RuntimeError):
+            a.reset()
+
     def test_legacy_static_threshold_preserves_float_boundary(self):
         import ctypes
         c = self.controller()
@@ -180,6 +275,7 @@ class FollowingTests(unittest.TestCase):
 
     def test_close_is_idempotent(self):
         a = self.controller()
+        self.assertEqual(a.build['abi_version'], a._dll.following_abi_version())
         a.close(); a.close()
         with self.assertRaises(RuntimeError):
             a.step(0, 0, [])

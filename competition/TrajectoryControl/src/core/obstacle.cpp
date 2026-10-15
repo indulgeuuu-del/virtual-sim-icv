@@ -655,12 +655,15 @@ static float calculateFollowingSpeedImpl(const std::vector<Obstacle>& obstacleLi
     {
         if (potentialObstacle.type == Obstacle::Type::Static)
         {
+            if (explicitPolicy) adaptiveFollowing.reset();
             float d0 = 0.05272 * mainVehicle.speed * mainVehicle.speed + 0.06714 * mainVehicle.speed - 0.02188; // d0 是刹车距离
             LOG << "minDistance:" << minDistance;
             LOG << "d0:" << d0;
             // Retain the legacy float-addition boundary exactly; the explicit
             // policy uses the supplied double-precision body clearance.
-            const double threshold = explicitPolicy ? d0 + stoppedBodyGap : d0 + legacyStoppedGap;
+            // A standstill has no negative stopping distance. Keep the explicit
+            // requested gap inclusive even when the inherited polynomial is <0.
+            const double threshold = explicitPolicy ? std::max(d0, 0.0f) + stoppedBodyGap : d0 + legacyStoppedGap;
             if ((minDistance - staticReferenceOffset) <= threshold)
             {
                 speed = 0; // 立即停止加速（刹车）
@@ -680,10 +683,17 @@ static float calculateFollowingSpeedImpl(const std::vector<Obstacle>& obstacleLi
             speed = adaptiveFollowing.getSpeed(); // Already clamped to nonnegative by AdaptiveFollowing
         }
     }
+    else if (explicitPolicy)
+    {
+        // A valid empty/filtered list is not an API failure. Preserve the free-road
+        // request, but do not carry the previous target's PID history into a new one.
+        adaptiveFollowing.reset();
+    }
     if (explicitPolicy)
     {
         if (!std::isfinite(speed))
         {
+            adaptiveFollowing.reset();
             LOG << "Invalid following policy output; requesting stop";
             return 0;
         }
@@ -708,7 +718,14 @@ float calculateFollowingSpeedWithPolicy(const std::vector<Obstacle>& obstacleLis
         || !std::isfinite(stoppedBodyGap) || stoppedBodyGap <= 0
         || !std::isfinite(maxSpeed) || maxSpeed < 0)
     {
+        adaptiveFollowing.reset();
         LOG << "Invalid following body-gap policy; requesting stop";
+        return 0;
+    }
+    if (maxSpeed == 0)
+    {
+        // A disabled controller must not integrate errors behind a zero output.
+        adaptiveFollowing.reset();
         return 0;
     }
     return calculateFollowingSpeedImpl(obstacleList, 0, referenceOffset, true, movingBodyGap, stoppedBodyGap, maxSpeed);
