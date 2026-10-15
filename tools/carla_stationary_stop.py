@@ -1,4 +1,4 @@
-"""Follow a stationary or stop-go lead on a verified straight Town01 lane.
+"""Follow a stationary, braking or stop-go lead on a verified straight Town01 lane.
 
 Exclusive local CARLA server required: loads Town01 if necessary.
 Default: compile and run production nearest-obstacle and following-speed bodies.
@@ -18,12 +18,12 @@ import time
 if __package__:
     from .competition_stop import StopController
     from .competition_following import FollowingController
-    from .lead_profile import StopGoProfile, assess_stop_go
+    from .lead_profile import StopGoProfile, BrakingProfile, assess_stop_go, assess_braking
     from .competition_steering import SteeringController, carla_to_formal
 else:
     from competition_stop import StopController
     from competition_following import FollowingController
-    from lead_profile import StopGoProfile, assess_stop_go
+    from lead_profile import StopGoProfile, BrakingProfile, assess_stop_go, assess_braking
     from competition_steering import SteeringController, carla_to_formal
 
 
@@ -104,15 +104,15 @@ def stop_command(gap, speed, cruise, stop_gap):
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scenario', choices=('stationary', 'stop-go'), default='stationary')
+    parser.add_argument('--scenario', choices=('stationary', 'stop-go', 'lead-brake'), default='stationary')
     parser.add_argument('--steering', choices=('formal', 'none'), default='formal',
                         help='Production pursuit/PID, or zero steering for earlier experiment comparison')
     parser.add_argument('--distance-geometry', choices=('body', 'legacy'), default='body',
                         help='Measured CARLA projected body geometry, or inherited SimOne fixed offset')
     parser.add_argument('--controller', choices=('formal-follow', 'experimental'), default='formal-follow',
                         help='Production following code by default; experimental retains the old Python planner')
-    parser.add_argument('--speed-kmh', type=float, default=10.0)
-    parser.add_argument('--gap', type=float, default=25.0, help='Initial body gap in m')
+    parser.add_argument('--speed-kmh', type=float, help='Default 30 for lead-brake; otherwise 10')
+    parser.add_argument('--gap', type=float, help='Initial body gap in m; default 50 for lead-brake, otherwise 25')
     parser.add_argument('--stop-gap', type=float, default=2.0, help='Desired final body gap in m')
     parser.add_argument('--timeout', type=float, default=60.0, help='Simulation seconds')
     parser.add_argument('--dwell-seconds', type=float, default=2.0, help='Continuous observed standstill in simulation seconds')
@@ -121,6 +121,10 @@ def parse_args():
     parser.add_argument('--no-realtime', action='store_true', help='Run without wall-clock pacing')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
+    if args.speed_kmh is None:
+        args.speed_kmh = 30.0 if args.scenario == 'lead-brake' else 10.0
+    if args.gap is None:
+        args.gap = 50.0 if args.scenario == 'lead-brake' else 25.0
     if not all(math.isfinite(v) for v in (args.speed_kmh, args.gap, args.stop_gap, args.timeout,
                                          args.dwell_seconds, args.fixed_delta_seconds)):
         parser.error('Numeric arguments must be finite')
@@ -130,11 +134,12 @@ def parse_args():
         parser.error('Initial gap: stop-gap+5..65 m; timeout: 5..120 s')
     if not 0 < args.dwell_seconds < args.timeout or not 0.02 <= args.fixed_delta_seconds <= 0.1:
         parser.error('Dwell must be >0 and <timeout; simulation step must be 0.02..0.1 s')
-    if args.scenario == 'stop-go':
+    if args.scenario in ('stop-go', 'lead-brake'):
         if args.controller != 'formal-follow':
-            parser.error('Stop-go requires formal-follow')
-        if args.timeout < StopGoProfile(speed=args.speed_kmh / 3.6).end_time:
-            parser.error('Timeout must cover the complete stop-go profile')
+            parser.error('Moving lead scenarios require formal-follow')
+        profile_type = BrakingProfile if args.scenario == 'lead-brake' else StopGoProfile
+        if args.timeout < profile_type(speed=args.speed_kmh / 3.6).end_time:
+            parser.error('Timeout must cover the complete lead profile')
     if args.output is None:
         args.output = Path('work/carla') / datetime.now().strftime('stationary-stop-%Y%m%d-%H%M%S-%f')
     if args.output.exists() and (not args.output.is_dir() or any(args.output.iterdir())):
@@ -153,6 +158,8 @@ def run(args):
     steering = None
     dt = args.fixed_delta_seconds
     profile = StopGoProfile(speed=args.speed_kmh / 3.6) if args.scenario == 'stop-go' else None
+    if args.scenario == 'lead-brake':
+        profile = BrakingProfile(speed=args.speed_kmh / 3.6)
     report = dict(passed=False, competition_verified=False, input_source='CARLA ground truth',
                   parameters={k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
                   source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
@@ -174,12 +181,22 @@ def run(args):
                           stop_core_role='observer only: never overrides production speed',
                           input_mapping='straight lane: ego s=0; obstacle s=projected actor-origin separation; static, same road/lane',
                           limitations='no production Obstacle constructor, map queries, main_follow loop, drive(), lateral control or SimOne SDK')
-            if profile:
+            if args.scenario == 'stop-go':
                 report.update(case_index=following.parameters['caseStop'],
                               lead_profile=vars(profile),
                               input_mapping='straight lane actor-origin separation; analytic lead speed; static below 0.01 m/s, otherwise same-direction',
                               acceptance=dict(gap_m=[10, 50], standstill_seconds=2, recovery_speed_mps=1,
                                   scope='auxiliary stop-go stimulus; fixed hold, not official reactive restart sequence'),
+                              lead_profile_sha256=hashlib.sha256(Path(__file__).with_name('lead_profile.py').read_bytes()).hexdigest())
+            elif args.scenario == 'lead-brake':
+                report.update(lead_profile=vars(profile),
+                              input_mapping='straight lane actor-origin separation; kinematic lead speed; static below 0.01 m/s, otherwise same-direction',
+                              case_index_note='Inherited non-caseStop branch (2m target), not verified 2027 platform caseName',
+                              rule_reference='2027 scoring PDF physical p11 table4: 30km/h, 50m, cruise 3s then lead deceleration 2m/s^2; 1..3.5m stop gap deducts 50 points',
+                              acceptance=dict(stop_gap_m=args.stop_gap, gap_error_m=0.5, stationary_speed_mps=0.1,
+                                  dwell_seconds=args.dwell_seconds, exclusive=args.exclusive_dwell,
+                                  cruise_speed_error_mps=0.5, cruise_gap_error_m=0.5,
+                                  scope='engineering stop AND cruise checks, not official scoring; 50m interpreted as body gap; fixed 30s observation after lead stop'),
                               lead_profile_sha256=hashlib.sha256(Path(__file__).with_name('lead_profile.py').read_bytes()).hexdigest())
         if args.steering == 'formal':
             steering = SteeringController()
@@ -339,6 +356,7 @@ def run(args):
             raise RuntimeError('Initial gap or speed outside experiment tolerance')
         print(f"Initial: {first['speed_mps'] * 3.6:.2f} km/h, body gap {first['gap_m']:.2f} m", flush=True)
         braking_saved = False
+        stopped_saved = False
         stop = None
         for step in range(round(args.timeout / dt)):
             started = time.monotonic()
@@ -394,8 +412,8 @@ def run(args):
             name = 'start.png' if step == 0 else None
             if brake > 0.05 and not braking_saved:
                 name, braking_saved = 'braking.png', True
-            if stop.ready and target == 0 and result['speed_mps'] <= 0.1:
-                name = 'stopped.png'
+            if stop.ready and target == 0 and result['speed_mps'] <= 0.1 and not stopped_saved:
+                name, stopped_saved = 'stopped.png', True
             elif step == round(args.timeout / dt) - 1:
                 name = 'final.png'
             if profile and result['time'] - first['time'] >= profile.end_time:
@@ -432,7 +450,15 @@ def run(args):
                               and (following is None or rows[-1]['formal_target_speed_mps'] == 0)
                               and abs(final['gap_m'] - args.stop_gap) <= 0.5
                               and final['gap_m'] > 0 and not collisions))
-        if profile:
+        if args.scenario == 'lead-brake':
+            # Last measured state follows the last sent command, held through this tick.
+            final['formal_target_speed_mps'] = rows[-1]['formal_target_speed_mps']
+            assessment = assess_braking(rows + [final], profile, args.gap, args.stop_gap,
+                                         args.dwell_seconds, args.exclusive_dwell)
+            report.update(braking_assessment=assessment, passed=assessment['passed'] and not collisions)
+            if not report['passed']:
+                report['error'] = assessment['error']
+        elif profile:
             assessment = assess_stop_go(rows + [final], profile)
             report.update(stop_go_assessment=assessment, passed=assessment['passed'] and not collisions)
             if not report['passed']:
