@@ -634,8 +634,9 @@ bool findNearestObstacleBehind(const std::vector<Obstacle>& list, const std::vec
 }
 
 // 计算跟车的速度
-float calculateFollowingSpeedWithGeometry(const std::vector<Obstacle>& obstacleList, int index,
-    double staticReferenceOffset)
+static float calculateFollowingSpeedImpl(const std::vector<Obstacle>& obstacleList, int index,
+    double staticReferenceOffset, bool explicitPolicy, double movingBodyGap,
+    double stoppedBodyGap, double maxSpeed)
 {
     // Along the same longitudinal axis: reference distance - offset = body gap.
     // Supply geometry of the selected target; never shift map coordinates to fit it.
@@ -647,7 +648,8 @@ float calculateFollowingSpeedWithGeometry(const std::vector<Obstacle>& obstacleL
     Obstacle potentialObstacle;
     double minDistance;
     float speed = 3.0f;
-    float distance_expect = (index == caseStop) ? 45 : 2;
+    const float legacyStoppedGap = (index == caseStop) ? 45 : 2;
+    const double distance_expect = explicitPolicy ? stoppedBodyGap : legacyStoppedGap;
     LOG << "distance_expect:" << distance_expect;
     if (calculateNearestObstacle(obstacleList, potentialObstacle, minDistance))
     {
@@ -656,7 +658,10 @@ float calculateFollowingSpeedWithGeometry(const std::vector<Obstacle>& obstacleL
             float d0 = 0.05272 * mainVehicle.speed * mainVehicle.speed + 0.06714 * mainVehicle.speed - 0.02188; // d0 是刹车距离
             LOG << "minDistance:" << minDistance;
             LOG << "d0:" << d0;
-            if ((minDistance - staticReferenceOffset) <= (d0 + distance_expect))
+            // Retain the legacy float-addition boundary exactly; the explicit
+            // policy uses the supplied double-precision body clearance.
+            const double threshold = explicitPolicy ? d0 + stoppedBodyGap : d0 + legacyStoppedGap;
+            if ((minDistance - staticReferenceOffset) <= threshold)
             {
                 speed = 0; // 立即停止加速（刹车）
             }
@@ -666,14 +671,47 @@ float calculateFollowingSpeedWithGeometry(const std::vector<Obstacle>& obstacleL
             LOG << "potentialObstacle.velocity = " << potentialObstacle.velocity;
             LOG << "minDistance = " << minDistance;
 
-            //AdaptiveFollowing adaptiveFollowing(followingKp, followingKi, followingKd, 45); // 跟车 PID
-            adaptiveFollowing.update(potentialObstacle.velocity, minDistance); // 跟车速度环
+            if (explicitPolicy)
+                adaptiveFollowing.update(potentialObstacle.velocity, minDistance - staticReferenceOffset, movingBodyGap);
+            else
+                adaptiveFollowing.update(potentialObstacle.velocity, minDistance); // 跟车速度环
             // Preserve the controller's slowdown/stop request. A minimum-speed
             // scoring preference must never force motion towards a close lead.
             speed = adaptiveFollowing.getSpeed(); // Already clamped to nonnegative by AdaptiveFollowing
         }
     }
+    if (explicitPolicy)
+    {
+        if (!std::isfinite(speed))
+        {
+            LOG << "Invalid following policy output; requesting stop";
+            return 0;
+        }
+        speed = std::min<double>(speed, maxSpeed);
+    }
     return speed;
+}
+
+float calculateFollowingSpeedWithGeometry(const std::vector<Obstacle>& obstacleList, int index,
+    double staticReferenceOffset)
+{
+    return calculateFollowingSpeedImpl(obstacleList, index, staticReferenceOffset, false, 0, 0, 0);
+}
+
+// Explicit body-gap policy. Caller supplies geometry for the selected target;
+// official caseName mapping and SDK geometry must be verified by the adapter.
+float calculateFollowingSpeedWithPolicy(const std::vector<Obstacle>& obstacleList,
+    double referenceOffset, double movingBodyGap, double stoppedBodyGap, double maxSpeed)
+{
+    if (!std::isfinite(referenceOffset) || referenceOffset < 0
+        || !std::isfinite(movingBodyGap) || movingBodyGap <= 0
+        || !std::isfinite(stoppedBodyGap) || stoppedBodyGap <= 0
+        || !std::isfinite(maxSpeed) || maxSpeed < 0)
+    {
+        LOG << "Invalid following body-gap policy; requesting stop";
+        return 0;
+    }
+    return calculateFollowingSpeedImpl(obstacleList, 0, referenceOffset, true, movingBodyGap, stoppedBodyGap, maxSpeed);
 }
 
 float caculateFollowingSpeed(const std::vector<Obstacle>& obstacleList, int index)

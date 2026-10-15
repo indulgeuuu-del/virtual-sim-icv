@@ -1,7 +1,7 @@
-#pragma once
+ï»¿#pragma once
 #include <cmath>
 
-/* Î»ÖÃÊ½ PID ¿ØÖÆÆ÷ */
+/* ä½ç½®å¼ PID æ§åˆ¶å™¨ */
 typedef class PositionalPID {
 public:
 	PositionalPID(float _kp, float _ki, float _kd) :
@@ -38,14 +38,14 @@ public:
 	}
 
 private:
-	float kp; // ±ÈÀıÏµÊı
-	float ki; // »ı·ÖÏµÊı
-	float kd; // Î¢·ÖÏµÊı
-	float errorPrev; // ÉÏÒ»´ÎÎó²î
-	float integral; // »ı·ÖÏî
+	float kp; // æ¯”ä¾‹ç³»æ•°
+	float ki; // ç§¯åˆ†ç³»æ•°
+	float kd; // å¾®åˆ†ç³»æ•°
+	float errorPrev; // ä¸Šä¸€æ¬¡è¯¯å·®
+	float integral; // ç§¯åˆ†é¡¹
 } posPid_t;
 
-/* ÔöÁ¿Ê½ PID ¿ØÖÆÆ÷ */
+/* å¢é‡å¼ PID æ§åˆ¶å™¨ */
 typedef class IncrementalPID {
 public:
 	IncrementalPID(float _kp, float _ki, float _kd) :
@@ -82,14 +82,14 @@ public:
 	}
 
 private:
-	float kp; // ±ÈÀıÏµÊı
-	float ki; // »ı·ÖÏµÊı
-	float kd; // Î¢·ÖÏµÊı
-	float errorPrev; // ÉÏÒ»´ÎÎó²î
-	float errorPrevPrev; // ÉÏÉÏÒ»´ÎÎó²î
+	float kp; // æ¯”ä¾‹ç³»æ•°
+	float ki; // ç§¯åˆ†ç³»æ•°
+	float kd; // å¾®åˆ†ç³»æ•°
+	float errorPrev; // ä¸Šä¸€æ¬¡è¯¯å·®
+	float errorPrevPrev; // ä¸Šä¸Šä¸€æ¬¡è¯¯å·®
 } incPid_t;
 
-/* ¶¯Ì¬ PD ¿ØÖÆÆ÷ */
+/* åŠ¨æ€ PD æ§åˆ¶å™¨ */
 typedef class DynamicPD {
 public:
 	DynamicPD(float _baseKp, float _motionKp, float _kd) :
@@ -123,22 +123,28 @@ public:
 	}
 
 private:
-	float baseKp;     // »ù´¡±ÈÀıÏµÊı
-	float motionKp;   // ¶¯Ì¬±ÈÀıÏµÊı
-	float kd;         // Î¢·ÖÏµÊı
-	float errorPrev;  // ÉÏÒ»´ÎÎó²î
+	float baseKp;     // åŸºç¡€æ¯”ä¾‹ç³»æ•°
+	float motionKp;   // åŠ¨æ€æ¯”ä¾‹ç³»æ•°
+	float kd;         // å¾®åˆ†ç³»æ•°
+	float errorPrev;  // ä¸Šä¸€æ¬¡è¯¯å·®
 } dynamicPd_t;
 
-/* ×ÔÊÊÓ¦¸ú³µÆ÷ */
+/* è‡ªé€‚åº”è·Ÿè½¦å™¨ */
 class AdaptiveFollowing {
 public:
 	AdaptiveFollowing(float kp, float ki, float kd, float _safeDistance) : pid(kp, ki, kd), safeDistance(_safeDistance), currentSpeed(0.0f) {}
 
 	void update(float frontCarSpeed, float frontCarDistance)
 	{
-		float speedAdjustment = pid.calculate(frontCarDistance, safeDistance);
+		update(frontCarSpeed, frontCarDistance, safeDistance);
+	}
+
+	// Distance and target must use the same reference (body gap or lane reference).
+	void update(float frontCarSpeed, float frontCarDistance, float targetDistance)
+	{
+		float speedAdjustment = pid.calculate(frontCarDistance, targetDistance);
 		currentSpeed = frontCarSpeed + speedAdjustment;
-		if (currentSpeed < 0.0f) currentSpeed = 0.0f; // ·ÀÖ¹µ¹³µ
+		if (currentSpeed < 0.0f) currentSpeed = 0.0f; // é˜²æ­¢å€’è½¦
 	}
 
 	float getSpeed() const { return currentSpeed; }
@@ -149,7 +155,7 @@ private:
 	float currentSpeed;
 };
 
-/* ·´Ïò¸ú³µÆ÷ */
+/* åå‘è·Ÿè½¦å™¨ */
 class AdaptiveLeading {
 public:
 	AdaptiveLeading(float kp, float ki, float kd, float _safeDistance) : pid(kp, ki, kd), safeDistance(_safeDistance), currentSpeed(0.0f) {}
@@ -158,7 +164,7 @@ public:
 	{
 		float speedAdjustment = pid.calculate(rearCarDistance, safeDistance);
 		currentSpeed = rearCarSpeed - speedAdjustment;
-		if (currentSpeed < 0.0f) currentSpeed = 0.0f; // ·ÀÖ¹µ¹³µ
+		if (currentSpeed < 0.0f) currentSpeed = 0.0f; // é˜²æ­¢å€’è½¦
 	}
 
 	float getSpeed() const { return currentSpeed; }

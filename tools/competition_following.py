@@ -108,7 +108,7 @@ class FollowingController:
         self.parameter_sha256 = hashlib.sha256(params_raw).hexdigest()
         self._dll = ctypes.CDLL(str(binary))
         self._dll.following_abi_version.restype = ctypes.c_int
-        if self._dll.following_abi_version() != 2:
+        if self._dll.following_abi_version() != 3:
             raise RuntimeError('Following ABI version mismatch')
         self._dll.following_create.argtypes = [ctypes.c_float]*4 + [ctypes.c_int]
         self._dll.following_create.restype = ctypes.c_void_p
@@ -116,20 +116,23 @@ class FollowingController:
         self._dll.following_destroy.restype = None
         self._dll.following_step.argtypes = [ctypes.c_void_p, ctypes.c_double, ctypes.c_double,
                 ctypes.POINTER(_Input), ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double,
+                ctypes.c_int, ctypes.c_double, ctypes.c_double, ctypes.c_double,
                 ctypes.POINTER(_Output)]
         self._dll.following_step.restype = ctypes.c_int
         self._handle = self._dll.following_create(*(self.parameters[name] for name in names))
         if not self._handle:
             raise ValueError('Invalid following configuration or allocation failure')
 
-    def step(self, ego_s, ego_speed, obstacles, case_index=2, *, static_reference_offset=None):
+    def step(self, ego_s, ego_speed, obstacles, case_index=2, *, static_reference_offset=None, policy=None):
         """Obstacles: (lane-s, speed m/s, type 0..3, same-lane, same-road).
 
         lane-s is an absolute coordinate on the ego lane, not signed gap. Type 0
         is static; callers must provide semantic classification, not raw SDK IDs.
         static_reference_offset optionally supplies reference-to-body geometry for
         the selected static target, in metres along the same axis. None preserves
-        the legacy SimOne value. It never changes map coordinates or moving PID gaps.
+        the legacy SimOne value. With explicit policy, this same measured offset
+        also converts the moving target's distance to body clearance. policy keys
+        are moving_gap_m, stopped_gap_m, max_speed_mps; no case-ID inference occurs.
         """
         if not getattr(self, '_handle', None):
             raise RuntimeError('Following controller is closed')
@@ -137,10 +140,20 @@ class FollowingController:
             raise ValueError('Too many obstacles for the bridge')
         if static_reference_offset is not None and (not math.isfinite(static_reference_offset) or static_reference_offset < 0):
             raise ValueError('Static reference offset must be finite and nonnegative')
+        policy_values = (0.0, 0.0, 0.0)
+        if policy is not None:
+            keys = ('moving_gap_m', 'stopped_gap_m', 'max_speed_mps')
+            if static_reference_offset is None or set(policy) != set(keys):
+                raise ValueError('Explicit policy requires measured reference offset and all three policy fields')
+            policy_values = tuple(policy[k] for k in keys)
+            if (not all(math.isfinite(v) for v in policy_values) or policy_values[0] <= 0
+                    or policy_values[1] <= 0 or policy_values[2] < 0):
+                raise ValueError('Policy gaps must be positive and ceiling nonnegative; all must be finite')
         data = (_Input * len(obstacles))(*(_Input(*item) for item in obstacles))
         result = _Output()
         if not self._dll.following_step(self._handle, ego_s, ego_speed, data, len(data), case_index,
-                static_reference_offset is not None, static_reference_offset or 0, ctypes.byref(result)):
+                static_reference_offset is not None, static_reference_offset or 0,
+                policy is not None, *policy_values, ctypes.byref(result)):
             raise ValueError('Invalid following input or non-finite production output')
         return dict(target_speed=result.target, selected_s=result.selected_s if result.found else None,
                     selected_distance=result.distance if result.found else None)

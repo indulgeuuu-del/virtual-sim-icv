@@ -5,6 +5,81 @@ from tools.competition_following import FollowingController, extract
 
 
 class FollowingTests(unittest.TestCase):
+    def test_legacy_static_threshold_preserves_float_boundary(self):
+        import ctypes
+        c = self.controller()
+        for speed in (1, 2, 3):
+            d0 = ctypes.c_float(0.05272*speed*speed + 0.06714*speed - 0.02188).value
+            threshold = ctypes.c_float(d0 + 2).value
+            self.assertEqual(c.step(0, speed, [(threshold,0,0,1,1)], static_reference_offset=0)['target_speed'], 0)
+            # Selection stores distance as float32; a float64 nextafter rounds back.
+            self.assertEqual(c.step(0, speed, [(threshold+1e-6,0,0,1,1)],
+                                    static_reference_offset=0)['target_speed'], 3)
+
+    def test_policy_keeps_body_gap_at_lead_speed_across_vehicle_geometries(self):
+        policy = dict(moving_gap_m=50, stopped_gap_m=2, max_speed_mps=30/3.6)
+        for offset in (4, 4.792, 7):
+            c = self.controller()
+            result = c.step(100, 30/3.6, [(150+offset, 30/3.6, 2, 1, 1)],
+                            static_reference_offset=offset, policy=policy)
+            self.assertAlmostEqual(result['target_speed'], 30/3.6, places=5)
+            self.assertAlmostEqual(result['selected_s'], 150+offset)
+
+    def test_policy_speed_ceiling_applies_to_moving_static_and_missing_target(self):
+        c = self.controller()
+        for ceiling in (0, 1, 30/3.6):
+            for obstacles in ([], [(100, 0, 0, 1, 1)], [(100, 20, 2, 1, 1)]):
+                result = c.step(0, 3, obstacles, static_reference_offset=5,
+                    policy=dict(moving_gap_m=50, stopped_gap_m=2, max_speed_mps=ceiling))
+                self.assertLessEqual(result['target_speed'], ceiling+1e-6)
+                self.assertGreaterEqual(result['target_speed'], 0)
+
+    def test_policy_static_gap_is_explicit_and_independent_of_case_index(self):
+        c = self.controller()
+        for index in (2, c.parameters['caseStop']):
+            for desired, expected in ((2, 3), (5, 0)):
+                result = c.step(0, 3, [(9.9, 0, 0, 1, 1)], index,
+                    static_reference_offset=5, policy=dict(moving_gap_m=50, stopped_gap_m=desired, max_speed_mps=10))
+                self.assertEqual(result['target_speed'], expected)
+
+    def test_policy_deceleration_stop_and_restart(self):
+        c = self.controller()
+        policy = dict(moving_gap_m=50, stopped_gap_m=2, max_speed_mps=30/3.6)
+        for v in (8, 5, 1, 0.1):
+            result = c.step(0, 3, [(55, v, 2, 1, 1)], static_reference_offset=5, policy=policy)
+            self.assertAlmostEqual(result['target_speed'], v, places=5)
+        self.assertEqual(c.step(0, 0, [(6.9, 0, 0, 1, 1)], static_reference_offset=5, policy=policy)['target_speed'], 0)
+        self.assertGreater(c.step(0, 0, [(55, 3, 2, 1, 1)], static_reference_offset=5, policy=policy)['target_speed'], 0)
+
+    def test_policy_invalid_parameters_are_rejected(self):
+        c = self.controller()
+        policy = dict(moving_gap_m=50, stopped_gap_m=2, max_speed_mps=8)
+        with self.assertRaises(ValueError):
+            c.step(0, 3, [], policy=policy)
+        for key in policy:
+            for value in (-1, math.nan, math.inf):
+                with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                    c.step(0, 3, [], static_reference_offset=5, policy=dict(policy, **{key:value}))
+        for key in ('moving_gap_m', 'stopped_gap_m'):
+            with self.assertRaises(ValueError):
+                c.step(0, 3, [], static_reference_offset=5, policy=dict(policy, **{key:0}))
+
+    def test_native_policy_rejects_invalid_parameters_and_recovers(self):
+        # Bypass Python validation: exercise the production C++ protection itself.
+        import ctypes
+        from tools.competition_following import _Input, _Output
+        c = self.controller()
+        data = (_Input*1)(_Input(55, 8, 2, 1, 1))
+        for offset, moving, stopped, limit in ((-1,50,2,8), (5,0,2,8), (5,50,0,8),
+                (5,50,2,-1), (math.nan,50,2,8), (5,math.inf,2,8), (5,50,math.nan,8), (5,50,2,math.inf)):
+            out = _Output()
+            self.assertEqual(c._dll.following_step(c._handle, 0, 3, data, 1, 2, 1, offset,
+                1, moving, stopped, limit, ctypes.byref(out)), 1)
+            self.assertEqual(out.target, 0)
+        result = c.step(0, 3, [(55,8,2,1,1)], static_reference_offset=5,
+                        policy=dict(moving_gap_m=50, stopped_gap_m=2, max_speed_mps=8))
+        self.assertEqual(result['target_speed'], 8)
+
     def test_static_geometry_uses_body_clearance_without_changing_reference_coordinates(self):
         c = self.controller()
         # Same 2.4m body clearance and speed, two different reference geometries.

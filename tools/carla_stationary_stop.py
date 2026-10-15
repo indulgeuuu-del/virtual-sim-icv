@@ -111,6 +111,8 @@ def parse_args():
                         help='Measured CARLA projected body geometry, or inherited SimOne fixed offset')
     parser.add_argument('--controller', choices=('formal-follow', 'experimental'), default='formal-follow',
                         help='Production following code by default; experimental retains the old Python planner')
+    parser.add_argument('--following-policy', choices=('scenario', 'legacy'),
+                        help='Default scenario for lead-brake, otherwise legacy; legacy reproduces old 45m reference target')
     parser.add_argument('--speed-kmh', type=float, help='Default 30 for lead-brake; otherwise 10')
     parser.add_argument('--gap', type=float, help='Initial body gap in m; default 50 for lead-brake, otherwise 25')
     parser.add_argument('--stop-gap', type=float, default=2.0, help='Desired final body gap in m')
@@ -125,6 +127,10 @@ def parse_args():
         args.speed_kmh = 30.0 if args.scenario == 'lead-brake' else 10.0
     if args.gap is None:
         args.gap = 50.0 if args.scenario == 'lead-brake' else 25.0
+    if args.following_policy is None:
+        args.following_policy = 'scenario' if args.scenario == 'lead-brake' else 'legacy'
+    if args.following_policy == 'scenario' and (args.scenario != 'lead-brake' or args.distance_geometry != 'body'):
+        parser.error('Explicit scenario policy currently requires lead-brake and measured body geometry')
     if not all(math.isfinite(v) for v in (args.speed_kmh, args.gap, args.stop_gap, args.timeout,
                                          args.dwell_seconds, args.fixed_delta_seconds)):
         parser.error('Numeric arguments must be finite')
@@ -160,6 +166,8 @@ def run(args):
     profile = StopGoProfile(speed=args.speed_kmh / 3.6) if args.scenario == 'stop-go' else None
     if args.scenario == 'lead-brake':
         profile = BrakingProfile(speed=args.speed_kmh / 3.6)
+    policy = (dict(moving_gap_m=args.gap, stopped_gap_m=args.stop_gap, max_speed_mps=args.speed_kmh/3.6)
+              if args.following_policy == 'scenario' else None)
     report = dict(passed=False, competition_verified=False, input_source='CARLA ground truth',
                   parameters={k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
                   source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
@@ -189,9 +197,10 @@ def run(args):
                                   scope='auxiliary stop-go stimulus; fixed hold, not official reactive restart sequence'),
                               lead_profile_sha256=hashlib.sha256(Path(__file__).with_name('lead_profile.py').read_bytes()).hexdigest())
             elif args.scenario == 'lead-brake':
-                report.update(lead_profile=vars(profile),
+                report.update(lead_profile=vars(profile), following_policy=policy,
                               input_mapping='straight lane actor-origin separation; kinematic lead speed; static below 0.01 m/s, otherwise same-direction',
-                              case_index_note='Inherited non-caseStop branch (2m target), not verified 2027 platform caseName',
+                              case_index_note=('Explicit policy bypasses case index; no official caseName mapping' if policy else
+                                               'Inherited non-caseStop branch (2m target), not verified 2027 platform caseName'),
                               rule_reference='2027 scoring PDF physical p11 table4: 30km/h, 50m, cruise 3s then lead deceleration 2m/s^2; 1..3.5m stop gap deducts 50 points',
                               acceptance=dict(stop_gap_m=args.stop_gap, gap_error_m=0.5, stationary_speed_mps=0.1,
                                   dwell_seconds=args.dwell_seconds, exclusive=args.exclusive_dwell,
@@ -371,7 +380,7 @@ def run(args):
             if following is not None:
                 formal = following.step(0, state['speed_mps'],
                         [(state['longitudinal_origin_distance_m'], lead_speed, 0 if lead_speed < 0.01 else 2, 1, 1)],
-                        case_index=report['case_index'], static_reference_offset=geometry_offset)
+                        case_index=report['case_index'], static_reference_offset=geometry_offset, policy=policy)
                 target = formal['target_speed']
                 throttle, brake = speed_actuators(target, state['speed_mps'])
             else:

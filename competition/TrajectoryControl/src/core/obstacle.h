@@ -115,5 +115,10 @@ extern float caculateFollowingSpeed(const std::vector<Obstacle>& obstacleList, i
 extern float calculateFollowingSpeedWithGeometry(const std::vector<Obstacle>& obstacleList,
     int index, double staticReferenceOffset);
 
+// Explicit body clearances (m), reference-to-body offset (m), speed ceiling (m/s).
+// No inferred mapping from legacy caseIdx to current competition scenario IDs.
+extern float calculateFollowingSpeedWithPolicy(const std::vector<Obstacle>& obstacleList,
+    double referenceOffset, double movingBodyGap, double stoppedBodyGap, double maxSpeed);
+
 // brief 计算超车速度
 extern void calculateOvertakingSpeed(std::vector<Obstacle>& obstacleList);
