@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <sstream>
@@ -24,6 +25,16 @@ struct SimPoint3D {
     SimPoint3D(double a=0,double b=0,double c=0):x(a),y(b),z(c) {}
 };
 }
+namespace HDMapStandalone {
+struct MLaneLink {
+    SSD::SimString leftNeighborLaneName,rightNeighborLaneName;
+    SSD::SimVector<SSD::SimString> predecessorLaneNameList,successorLaneNameList;
+};
+}
+class UtilMath { public: static double calculateSpeed(const double, const double); };
+// Old revisions abort on ambiguous successors. Turn that fatal assertion into
+// a test failure without opening a Windows crash dialog; it never means success.
+#define ASSERT(ok, message) do { if(!(ok)) throw std::runtime_error(message); } while(0)
 struct Logger {
     enum class Color { BrightBlue, BrightMagenta, BrightGreen };
     std::string text;
@@ -43,7 +54,7 @@ struct Control {
     ESimOne_Throttle_Mode throttleMode=ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
 };
 struct Light { int signalLights=0; };
-struct Gps { double posX=10,posY=20,posZ=0; };
+struct Gps { double posX=10,posY=20,posZ=0; float velX=3,velY=0,oriX=0,oriY=0,oriZ=0; };
 struct RawObstacle { double s=100; };
 struct GroundTruth { int obstacleSize=1; RawObstacle obstacle[2]; };
 inline auto pControl=std::make_unique<Control>();
@@ -64,11 +75,21 @@ struct Timer { void tic() {} double get() const { return 0.1; } };
 inline Timer timer;
 inline float calculateFps(int,double) { return 10; }
 struct Input { bool gps=true, obstacle=true, send=true; int count=1; bool route=true;
-    bool near=true, projection=true, emptyLane=false, finiteProjection=true, finitePosition=true; };
+    bool near=true, projection=true, emptyLane=false, finiteProjection=true, finitePosition=true;
+    bool heading=true,finiteHeading=true,zeroHeading=false,link=true,clearLink=false;
+    bool badRoad=false,largeRoad=false,ambiguous=false,noNeighbors=false,noSuccessors=false,junctionOnly=false;
+};
+inline bool mapValid(const Input& a) {
+    return a.near && a.projection && !a.emptyLane && a.finiteProjection && a.finitePosition &&
+           a.heading && a.finiteHeading && !a.zeroHeading && a.link && !a.badRoad && !a.largeRoad && !a.ambiguous;
+}
 inline std::vector<Input> inputs;
 inline bool clearFailedOutput=false;
 inline std::vector<Control> sends;
-struct MapState { double x,s,t; std::string lane,lastLane; };
+struct MapState { double x=0,s=0,t=0; std::string lane,lastLane,next;
+    float heading=0; bool left=false,right=false; std::string leftName,rightName;
+    size_t successors=0;
+};
 inline std::vector<MapState> mapStates;
 inline void recordMapState();
 inline const Input& current() { return inputs.at(waits-1); }
@@ -87,6 +108,8 @@ inline bool GetGps(const char*, Gps* out) {
 }
 inline bool GetNearMostLane(const SSD::SimPoint3D&,SSD::SimString& lane,double& s,double& t,double& sc,double& tc) {
     lane=current().emptyLane ? "" : "1_0_1"; s=10;t=sc=tc=0;
+    if(current().badRoad) lane="invalid_0_1";
+    if(current().largeRoad) lane="999999999999999999999_0_1";
     return current().near; // Failure may still write an apparently valid lane.
 }
 inline bool GetLaneST(const SSD::SimString&,const SSD::SimPoint3D&,double& s,double& t) {
@@ -94,6 +117,26 @@ inline bool GetLaneST(const SSD::SimString&,const SSD::SimPoint3D&,double& s,dou
     t=current().finiteProjection ? 0 : std::nan("");
     return current().projection;
 }
+inline bool GetInertialFromLaneST(const SSD::SimString&,double,double,SSD::SimPoint3D& pt,SSD::SimPoint3D& dir) {
+    pt={0,0,0}; dir={current().zeroHeading ? 0.0 : 1.0,0,0};
+    if(!current().finiteHeading) dir.y=std::nan("");
+    return current().heading;
+}
+inline bool GetLaneLink(const SSD::SimString&,HDMapStandalone::MLaneLink& link) {
+    if(!current().link && !current().clearLink) {
+        link.leftNeighborLaneName="bad_partial_lane"; return false;
+    }
+    link=HDMapStandalone::MLaneLink{};
+    if(!current().link) return false;
+    if(!current().noNeighbors) link.leftNeighborLaneName="1_0_2";
+    if(!current().noSuccessors) link.successorLaneNameList={"2_0_1"};
+    if(current().ambiguous) link.successorLaneNameList.push_back("3_0_1");
+    return true;
+}
+inline bool IsTwoSideRoad(const long&) { return false; } // false is a property, not failure.
+// Inherited code uses the older long output; current web docs use SimString.
+// Match the inherited signature here; actual competition SDK build is pending.
+inline bool IsInJunction(const SSD::SimString&,long& id) { id=1; return current().junctionOnly; }
 inline bool GetGroundTruth(const char*, GroundTruth* out) {
     ++obstacleReads;
     if(!current().obstacle) {
@@ -110,7 +153,10 @@ struct MainVehicle {
     const char* id="0";
     double s=0,t=0;
     SSD::SimPoint3D pt;
-    SSD::SimString laneID,lastLaneID;
+    SSD::SimString laneID,lastLaneID,nextLaneID;
+    HDMapStandalone::MLaneLink laneLink;
+    float laneAzimuth=0,vx=0,vy=0,roll=0,pitch=0,yaw=0,steeringOffset=0;
+    bool leftLaneExist=false,rightLaneExist=false,isTwoSideRoad=false,useDefaultPath=true;
     float speed=3;
     bool reverse=false;
     struct { void clear() {} } neighborhood;
@@ -121,8 +167,14 @@ struct MainVehicle {
 inline MainVehicle mainVehicle;
 inline void recordMapState() {
     mapStates.push_back({mainVehicle.pt.x,mainVehicle.s,mainVehicle.t,
-                        mainVehicle.laneID.GetString(),mainVehicle.lastLaneID.GetString()});
+                        mainVehicle.laneID.GetString(),mainVehicle.lastLaneID.GetString(),
+                        mainVehicle.nextLaneID.GetString(),mainVehicle.laneAzimuth,
+                        mainVehicle.leftLaneExist,mainVehicle.rightLaneExist,
+                        mainVehicle.laneLink.leftNeighborLaneName.GetString(),
+                        mainVehicle.laneLink.rightNeighborLaneName.GetString(),
+                        mainVehicle.laneLink.successorLaneNameList.size()});
 }
+float getLaneAzimuth(const SSD::SimString&);
 inline SSD::SimString m_SampleGetNearMostLane(const SSD::SimPoint3D& pt) {
     SSD::SimString lane; double s,t,sc,tc;
     SimOneAPI::GetNearMostLane(pt,lane,s,t,sc,tc); return lane;

@@ -71,14 +71,14 @@ def main():
         'TrajectoryControl/src/core/obstacle.cpp', 'TrajectoryControl/src/core/vehicle.cpp',
         'TrajectoryControl/src/main_manual.cpp', 'TrajectoryControl/src/core/process.cpp',
         'TrajectoryControl/src/core/process.h', 'TrajectoryControl/src/tools/controller.hpp',
-        'util/UtilDriver.h',
+        'util/UtilDriver.h', 'util/UtilMath.h',
         'TrajectoryControl/src/main.cpp', 'TrajectoryControl/src/main_follow.cpp',
         'TrajectoryControl/src/main_track.cpp',
     )
     report = {'sdk_build_verified': False, 'platform_run_verified': False,
               'official_score_verified': False,
-              'scope': 'geometry, GPS-update/lane-projection and track input prefixes; full strategy and following loops; obstacle fetch; real drive/pursuit/PID/curvature',
-              'limitations': 'map/API/frame-input fixtures; following/track input suites substitute drive; no full update()/track planner, SDK, vehicle dynamics or scoring',
+              'scope': 'geometry; full vehicle update and following loop; track input prefix; strategy loop; obstacle fetch; real drive/pursuit/PID/curvature',
+              'limitations': 'map/API/frame-input fixtures; following/track input suites substitute drive and convert legacy fatal ASSERT to test failure; no full track planner, SDK, vehicle dynamics or scoring',
               'tests': {}, 'passed': False}
     try:
         revision = None
@@ -217,11 +217,14 @@ def main():
         (follow_dir / 'controller.hpp').write_bytes(support.encode('utf-8'))
         (follow_dir / 'main_follow.cpp').write_bytes(sources['TrajectoryControl/src/main_follow.cpp'].encode('utf-8'))
         fetch = sources['TrajectoryControl/src/main.cpp'].split('bool updateObstacleData(', 1)[1]
-        gps_gate = between(sources['TrajectoryControl/src/core/vehicle.cpp'],
-                           'bool MainVehicle::update(', '// 计算主车的详细参数')
-        projection = between(sources['TrajectoryControl/src/core/vehicle.cpp'],
-                             '// 计算主车的详细参数', '\tlaneAzimuth =')
-        follow_support = '#include "main.h"\n' + gps_gate + '\n' + projection + '\nreturn true;\n}\n'
+        update = between(sources['TrajectoryControl/src/core/vehicle.cpp'],
+                         'bool MainVehicle::update(', '// 必须在本帧 obstacleList 构建完成后调用')
+        azimuth = between(sources['TrajectoryControl/src/core/process.cpp'],
+                          'float getLaneAzimuth(', 'bool getValidTrafficLight(')
+        speed = between(sources['util/UtilMath.h'],
+                        'static double calculateSpeed(const double velX, const double velY)\n',
+                        '\n\t//').replace('static double calculateSpeed(', 'double UtilMath::calculateSpeed(', 1)
+        follow_support = '#include "main.h"\n' + speed + '\n' + azimuth + '\n' + update
         follow_support += 'bool updateObstacleData(' + fetch + '\n'
         follow_support += replacements['// @PRODUCTION_NEAREST@'] + replacements['// @PRODUCTION_FOLLOWING@']
         (follow_dir / 'support.cpp').write_bytes(follow_support.encode('utf-8'))
@@ -284,13 +287,17 @@ def main():
                      'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
                      'gps_reverse', 'prolonged_failure', 'pid_recovery', 'route_initial', 'route_repeated',
                      'map_nearest','map_projection','map_empty_lane','map_nonfinite','map_bad_position',
-                     'map_initial','map_repeated'], 'follow_input')
+                     'map_initial','map_repeated','heading_failed','heading_nonfinite','heading_zero',
+                     'link_partial','link_cleared','link_initial','link_repeated','road_invalid','road_overflow',
+                     'successor_ambiguous','link_empty_valid','junction_valid'], 'follow_input')
         compile_run(follow_dir, ['track_prefix.cpp', 'support.cpp', 'test.cpp'],
                     ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
                      'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
                      'gps_reverse', 'prolonged_failure', 'route_initial', 'route_repeated',
                      'map_nearest','map_projection','map_empty_lane','map_nonfinite','map_bad_position',
-                     'map_initial','map_repeated'], 'track_input', ['/DTEST_TRACK_PREFIX'])
+                     'map_initial','map_repeated','heading_failed','heading_nonfinite','heading_zero',
+                     'link_partial','link_cleared','link_initial','link_repeated','road_invalid','road_overflow',
+                     'successor_ambiguous','link_empty_valid','junction_valid'], 'track_input', ['/DTEST_TRACK_PREFIX'])
         report['passed'] = bool(report['tests']) and all(t['passed'] for t in report['tests'].values())
     except (OSError, ValueError, IndexError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
         report['error'] = f'{type(error).__name__}: {error}'

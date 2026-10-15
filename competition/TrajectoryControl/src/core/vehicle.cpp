@@ -3,6 +3,7 @@
 #include "utility.h"
 #include "controller.hpp"
 #include "vehicle.h"
+#include <stdexcept>
 
 // 默认构造
 MainVehicle::MainVehicle()
@@ -82,12 +83,69 @@ bool MainVehicle::update(int timeoutFrames)
 		globalLogger(Logger::Color::BrightMagenta) << "Vehicle lane projection failed: reject frame";
 		return false;
 	}
+	SSD::SimPoint3D laneOrigin, laneDirection(std::nan(""), std::nan(""), std::nan(""));
+	if (!SimOneAPI::GetInertialFromLaneST(newLaneID, 0.0, 0.0, laneOrigin, laneDirection)
+		|| !std::isfinite(laneDirection.x) || !std::isfinite(laneDirection.y)
+		|| !std::isfinite(laneDirection.z) || (laneDirection.x == 0.0 && laneDirection.y == 0.0))
+	{
+		globalLogger(Logger::Color::BrightMagenta) << "Vehicle lane heading unavailable: reject frame";
+		return false;
+	}
+	float newLaneAzimuth = std::atan2(laneDirection.y, laneDirection.x) * 57.29578f;
+	if (newLaneAzimuth < 0) newLaneAzimuth += 360;
+
+	// Preserve the inherited road-prefix parsing convention; malformed IDs must not exit the loop.
+	const std::string strLaneID(newLaneID.GetString());
+	int roadID;
+	try
+	{
+		roadID = std::stoi(strLaneID.substr(0, strLaneID.find('_')));
+	}
+	catch (const std::invalid_argument&)
+	{
+		globalLogger(Logger::Color::BrightMagenta) << "Vehicle road ID invalid: reject frame";
+		return false;
+	}
+	catch (const std::out_of_range&)
+	{
+		globalLogger(Logger::Color::BrightMagenta) << "Vehicle road ID out of range: reject frame";
+		return false;
+	}
+	const bool newIsTwoSideRoad = SimOneAPI::IsTwoSideRoad(roadID);
+	HDMapStandalone::MLaneLink newLaneLink;
+	if (!SimOneAPI::GetLaneLink(newLaneID, newLaneLink))
+	{
+		globalLogger(Logger::Color::BrightMagenta) << "Vehicle lane links unavailable: reject frame";
+		return false;
+	}
+	SSD::SimString newNextLaneID = "none";
+	bool hasNonJunctionSuccessor = false;
+	long junctionID = 0;
+	for (size_t i = 0, ie = newLaneLink.successorLaneNameList.size(); i < ie; ++i)
+	{
+		// IsInJunction returns a property, not an API success flag.
+		if (SimOneAPI::IsInJunction(newLaneLink.successorLaneNameList[i], junctionID)) continue;
+		if (hasNonJunctionSuccessor)
+		{
+			globalLogger(Logger::Color::BrightMagenta) << "Vehicle lane successor ambiguous: reject frame";
+			return false;
+		}
+		hasNonJunctionSuccessor = true;
+		newNextLaneID = newLaneLink.successorLaneNameList[i];
+	}
+
+	// Commit a complete map snapshot only; a failed query keeps the previous valid state.
 	lastLaneID = (frameCount == 1 || laneID.Empty()) ? newLaneID : laneID;
 	laneID = newLaneID;
 	pt = newPt;
 	s = newS;
 	t = newT;
-	laneAzimuth = getLaneAzimuth(laneID); // 主车所在道路的方位角
+	laneAzimuth = newLaneAzimuth; // 主车所在道路的方位角
+	isTwoSideRoad = newIsTwoSideRoad;
+	laneLink = newLaneLink;
+	leftLaneExist = !laneLink.leftNeighborLaneName.Empty();
+	rightLaneExist = !laneLink.rightNeighborLaneName.Empty();
+	nextLaneID = newNextLaneID;
 
 	vx = pGps->velX;
 	vy = pGps->velY;
@@ -97,21 +155,6 @@ bool MainVehicle::update(int timeoutFrames)
 	yaw = pGps->oriZ;
 	steeringOffset = 0.0f;
 	useDefaultPath = true;
-
-	std::string strLaneID(laneID.GetString());
-	isTwoSideRoad = SimOneAPI::IsTwoSideRoad(std::stoi(strLaneID.substr(0, strLaneID.find('_'))));
-
-	// 获取主车的左右邻接车道情况
-	leftLaneExist = rightLaneExist = false;
-	SimOneAPI::GetLaneLink(laneID, laneLink); // 获取主车所在的车道的其他邻接车道
-	if (strlen(laneLink.leftNeighborLaneName.GetString()) != 0) // 存在左邻接车道
-	{
-		leftLaneExist = true;
-	}
-	if (strlen(laneLink.rightNeighborLaneName.GetString()) != 0) // 存在右邻接车道
-	{
-		rightLaneExist = true;
-	}
 
 	/*LOG << "主车当前位置为：" << pt.x << ", " << pt.y << ", " << "所在车道为：" << laneID.GetString();
 	LOG << "predecessorLaneNameList.size = " << laneLink.predecessorLaneNameList.size();
@@ -126,28 +169,6 @@ bool MainVehicle::update(int timeoutFrames)
 		LOG << "successorLaneNameList[" << i << "] 是否在路口内：" << (SimOneAPI::IsInJunction(laneLink.successorLaneNameList[i], temp) == true ? "true" : "false");
 
 	}*/
-
-	if (laneLink.successorLaneNameList.empty()) nextLaneID = "none";
-	else
-	{
-		long tempJungleID = 0;
-		std::vector<SSD::SimString> notJungleLane;
-		for (size_t i = 0, ie = laneLink.successorLaneNameList.size(); i < ie; ++i)
-		{
-			if (!SimOneAPI::IsInJunction(laneLink.successorLaneNameList[i], tempJungleID))
-			{
-				notJungleLane.push_back(laneLink.successorLaneNameList[i]);
-			}
-		}
-
-		ASSERT(notJungleLane.size() < 2, "后继道路中不是路口的道路大于一条");
-
-		if (notJungleLane.empty()) nextLaneID = "none";
-		else
-		{
-			nextLaneID = notJungleLane[0];
-		}
-	}
 
 	return FlagType::isMainVehicleInitialized;
 }

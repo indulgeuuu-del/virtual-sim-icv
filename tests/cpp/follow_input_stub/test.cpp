@@ -25,6 +25,18 @@ int main(int argc,char** argv) {
         else if(name=="map_bad_position") inputs[1].finitePosition=false;
         else if(name=="map_initial") inputs[0].projection=false;
         else if(name=="map_repeated") { inputs[0].projection=false; inputs[1].projection=false; }
+        else if(name=="heading_failed") inputs[1].heading=false;
+        else if(name=="heading_nonfinite") inputs[1].finiteHeading=false;
+        else if(name=="heading_zero") inputs[1].zeroHeading=true;
+        else if(name=="link_partial") inputs[1].link=false;
+        else if(name=="link_cleared") { inputs[1].link=false; inputs[1].clearLink=true; }
+        else if(name=="link_initial") inputs[0].link=false;
+        else if(name=="link_repeated") { inputs[0].link=false; inputs[1].link=false; }
+        else if(name=="road_invalid") inputs[1].badRoad=true;
+        else if(name=="road_overflow") inputs[1].largeRoad=true;
+        else if(name=="successor_ambiguous") inputs[1].ambiguous=true;
+        else if(name=="link_empty_valid") { for(auto& a:inputs) { a.noNeighbors=true; a.noSuccessors=true; } }
+        else if(name=="junction_valid") { for(auto& a:inputs) a.junctionOnly=true; }
         else throw std::runtime_error("unknown test");
         try {
 #ifdef TEST_TRACK_PREFIX
@@ -39,8 +51,7 @@ int main(int argc,char** argv) {
         int expectedDrives=0;
         for(size_t i=0;i<inputs.size();++i) {
             const auto& input=inputs[i];
-            if(input.gps && input.obstacle && input.route && input.near && input.projection &&
-                !input.emptyLane && input.finiteProjection && input.finitePosition) {
+            if(input.gps && input.obstacle && input.route && mapValid(input)) {
                 ++expectedDrives;
                 require(sends[i].throttle>0,"fresh input failed to resume");
             } else {
@@ -50,12 +61,19 @@ int main(int argc,char** argv) {
                 require(sends[i].gear==(mainVehicle.reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
                         : ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive),"stop used wrong gear");
             }
-            if(!input.near || !input.projection || input.emptyLane || !input.finiteProjection || !input.finitePosition) {
-                const MapState previous=i==0 ? MapState{0,0,0,"",""} : mapStates[i-1];
+            if(!mapValid(input)) {
+                const MapState previous=i==0 ? MapState{} : mapStates[i-1];
                 const auto& now=mapStates[i];
                 require(now.x==previous.x && now.s==previous.s && now.t==previous.t &&
-                        now.lane==previous.lane && now.lastLane==previous.lastLane,
+                        now.lane==previous.lane && now.lastLane==previous.lastLane && now.next==previous.next &&
+                        now.heading==previous.heading && now.left==previous.left && now.right==previous.right &&
+                        now.leftName==previous.leftName && now.rightName==previous.rightName && now.successors==previous.successors,
                         "failed map read partially overwrote valid vehicle state");
+            }
+            if(mapValid(input) && input.gps) {
+                require(mapStates[i].left==!input.noNeighbors && !mapStates[i].right,"incorrect neighbor flags");
+                require(mapStates[i].next==((input.noSuccessors || input.junctionOnly) ? "none" : "2_0_1"),
+                        "valid successor semantics changed");
             }
         }
         require(drives==expectedDrives,"invalid input reached drive or valid input not recovered");
