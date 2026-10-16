@@ -168,6 +168,7 @@ def main():
             '// @SPEED@': between(sources['util/UtilMath.h'], 'static double calculateSpeed(const double velX, const double velY, const double velZ)', '\n\t//'),
             '// @PREDICTION@': sources['TrajectoryControl/src/tools/prediction.cpp'].split('#include "logger.hpp"', 1)[1],
             '// @CONSTRUCTOR@': between(obstacle, 'Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle)', '// 通过索引来构造'),
+            '// @MERGED_CONSTRUCTOR@': between(obstacle, 'Obstacle::Obstacle(const std::vector<size_t>& index)', 'bool calculateNearestObstacle('),
         }
         for marker, code in replacements_ctor.items():
             constructor_fixture = constructor_fixture.replace(marker, code)
@@ -337,7 +338,10 @@ def main():
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
         compile_run(output, ['constructor.cpp'], ['valid','static','vertical','near_failed_written','heading_failed',
                     'projection_failed','road_projection_failed','width_failed','failed_partial','link_failed',
-                    'left_empty','right_empty','prediction_nan','prediction_inf','prediction_growth'], 'obstacle_constructor')
+                    'left_empty','right_empty','prediction_nan','prediction_inf','prediction_growth',
+                    'merged_valid','merged_single','merged_empty','merged_near_failed_written','merged_heading_failed',
+                    'merged_projection_failed','merged_road_projection_failed','merged_width_failed','merged_failed_partial',
+                    'merged_link_failed','merged_left_empty','merged_right_empty'], 'obstacle_constructor')
         compile_run(output, ['road_width.cpp'],
                     [f'{kind}_{mode}' for kind in ('road','raw','group') for mode in
                      ('valid','single','failed','partial','unwritten','nan','inf','negative','zero','link_failed')]

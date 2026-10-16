@@ -8,6 +8,8 @@ struct SimOne_Data_Obstacle_Entry {
     float width=2,length=4,velX=1,velY=0,velZ=0,oriZ=0,posX=0,posY=0,posZ=0;
     Prediction prediction;
 };
+struct GroundTruth { int obstacleSize=2; SimOne_Data_Obstacle_Entry obstacle[2]; };
+auto pObstacle=std::make_unique<GroundTruth>();
 struct { float laneAzimuth=0; double s=0; SSD::SimPoint3D pt; SSD::SimString laneID{"lane"}; } mainVehicle;
 namespace FlagType { bool isCrosswalkExist=false; }
 struct SilentLog { template<class T> SilentLog& operator<<(const T&) { return *this; } } silentLog;
@@ -43,10 +45,36 @@ void getObstacleRoadSidePosition(const SimOne_Data_Obstacle_Entry& o,SSD::SimPoi
 // @AZIMUTH@
 // @PREDICTION@
 // @CONSTRUCTOR@
+// @MERGED_CONSTRUCTOR@
 int main(int argc,char** argv) {
     try {
         if(argc!=2) throw std::runtime_error("missing case");
         scenario=argv[1];
+        if(scenario.rfind("merged_",0)==0) {
+            scenario=scenario.substr(7);
+            std::vector<size_t> indices={0,1};
+            pObstacle->obstacle[0].velX=pObstacle->obstacle[1].velX=0;
+            pObstacle->obstacle[1].posX=2;
+            if(scenario=="single") indices={0};
+            if(scenario=="empty") indices.clear();
+            bool rejected=false;
+            try {
+                Obstacle result(indices);
+                if(scenario=="valid" || scenario=="single") {
+                    const bool single=scenario=="single";
+                    if(result.type!=Obstacle::Type::Static || result.width!=2 || result.length!=(single ? 4 : 6)
+                        || result.pt.x!=(single ? 0 : 1) || result.velocity!=0 || result.laneWidth!=4 || result.roadWidth!=(single ? 4 : 12)
+                        || result.predictionGM.size()!=(single ? 50 : 0))
+                        throw std::runtime_error("wrong merged constructor fields");
+                }
+            } catch(const std::domain_error&) { rejected=true; }
+            bool valid=scenario=="valid" || scenario=="single";
+            if(rejected==valid) throw std::runtime_error("merged construction accepted failure or rejected valid data");
+            scenario="valid";
+            Obstacle recovered(std::vector<size_t>{0,1});
+            if(recovered.length!=6) throw std::runtime_error("merged recovery failed");
+            std::cout<<"PASS"; return 0;
+        }
         SimOne_Data_Obstacle_Entry input;
         if(scenario=="static") input.velX=0;
         if(scenario=="vertical") { input.velX=0;input.velY=1; }

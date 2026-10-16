@@ -430,6 +430,7 @@ Obstacle::Obstacle(size_t index) { *this = Obstacle(pObstacle->obstacle[index]);
 // 通过索引列表来构造
 Obstacle::Obstacle(const std::vector<size_t>& index)
 {
+    if (index.empty()) throw std::domain_error("Cannot construct an empty obstacle group");
 
     if (index.size() == 1) // 如果当前组内只有一个障碍物
     {
