@@ -1,6 +1,7 @@
 #include <vector>
 #include <limits>
 #include <cmath>
+// @STOP_CONTROL@
 struct StopLine {
     enum class Type { Whole,Single } type=Type::Whole;
     enum class Strategy { StopStart,LaneChange } strategy=Strategy::StopStart;
@@ -22,4 +23,13 @@ extern "C" __declspec(dllexport) double stopline_step(double distance,double spe
 // @BRAKING@
     }
     return control.throttle;
+}
+
+extern "C" __declspec(dllexport) double stopline_explicit(double distance,double speed,
+    double cruise,double margin,double front,int approach) {
+    if(approach == 1)
+        return StopLineControl::approachTarget(distance,0,front,speed,cruise,margin);
+    if(approach != 0) return 0;
+    return StopLineControl::legacyTarget(static_cast<float>(distance),0,front,
+        static_cast<float>(speed),cruise,static_cast<float>(margin));
 }

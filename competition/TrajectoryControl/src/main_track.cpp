@@ -1,6 +1,7 @@
 ﻿#include "main.h"
 
 #include <stdexcept>
+#include "StopLineControl.h"
 
 int main_track(void)
 {
@@ -155,11 +156,11 @@ int main_track(void)
 			/* 全停止线，主车的策略是停走 */
 			if (potentialStopLine.type == StopLine::Type::Whole && potentialStopLine.strategy == StopLine::Strategy::StopStart)
 			{
-				float d0 = 0.05272 * mainVehicle.speed * mainVehicle.speed + 0.06714 * mainVehicle.speed - 0.02188; // d0 是刹车距离
-				if (potentialStopLine.toVehicleDist - potentialStopLine.offset - 4.38046 <= d0 + stopLineDistThres) // d0 + x 表示要在停止线 x 米前停下来， - 4.38046 代表减去质心到车头的距离
-				{
-					pControl->throttle = 0;  // 立即停止加速（刹车）
-				}
+				// Keep the inherited SDK path until its reference geometry is verified.
+				// CARLA validates the explicit-geometry approach in the same shared core.
+				pControl->throttle = StopLineControl::legacyTarget(
+					potentialStopLine.toVehicleDist, potentialStopLine.offset, 4.38046,
+					mainVehicle.speed, pControl->throttle, stopLineDistThres);
 			}
 			/* 半停止线，主车的策略是变道 */
 			else if (potentialStopLine.type == StopLine::Type::Single && potentialStopLine.strategy == StopLine::Strategy::LaneChange)

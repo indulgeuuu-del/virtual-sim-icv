@@ -1,4 +1,4 @@
-"""Fixed virtual stop-line baseline using production C++ selection/braking.
+"""Fixed virtual stop-line experiment using shared production C++ speed control.
 
 Requires an exclusive CARLA server. No signal detection, junction logic or
 release phase. Rules reference: 2027 scoring PDF physical page 19, table 22.
@@ -48,6 +48,10 @@ def main():
     p.add_argument('--distance', type=float, default=60, help='Initial vehicle reference point to fixed line, m')
     p.add_argument('--fixed-delta-seconds', type=float, default=0.05)
     p.add_argument('--seconds', type=float, default=45)
+    p.add_argument('--distance-geometry', choices=('body','legacy'), default='body',
+                   help='Measured body front, or old 4.38046m reference offset')
+    p.add_argument('--stop-policy', choices=('approach','legacy'), default='approach',
+                   help='Shared C++ gradual approach, or inherited full-brake trigger')
     p.add_argument('--no-realtime', action='store_true', help='Run as fast as the server allows')
     p.add_argument('--no-follow-camera', action='store_true', help='Leave the spectator camera under manual control')
     p.add_argument('--output', type=Path, default=Path('work/carla/stopline-baseline'))
@@ -66,7 +70,7 @@ def main():
         git_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).resolve().parents[1],text=True).strip(),
         parameter_sha256=controller.parameter_sha256, parameters={k:str(v) if isinstance(v,Path) else v for k,v in vars(a).items()},
         script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-        scope='actual nearest-line and Whole braking bodies; CARLA pedals/geometry; no complete drive or main_track',
+        scope='shared C++ stop-line control; legacy bridge also runs nearest-line/Whole fragment; CARLA pedals/geometry; no complete drive or main_track',
         rule='2027 scoring physical p19 table22: >0.5m and <=1m penalty; >1m or hold <=5s zero; this is only a subset')
     try:
         world=client.get_world()
@@ -136,11 +140,17 @@ def main():
             lateral=-(location.x-origin.x)*axis[1]+(location.y-origin.y)*axis[0]
             yaw=(pose.rotation.yaw-wp.transform.rotation.yaw+180)%360-180
             if abs(lateral)>0.4 or abs(yaw)>3: raise RuntimeError('Left straight experiment corridor')
-            target=controller.step(reference,speed,a.speed_kmh/3.6)
+            used_front=front if a.distance_geometry=='body' else 4.38046
+            if a.stop_policy=='legacy' and a.distance_geometry=='legacy':
+                target=controller.step(reference,speed,a.speed_kmh/3.6)
+            else:
+                target=controller.step(reference,speed,a.speed_kmh/3.6,
+                    front_offset=used_front,policy=a.stop_policy)
             throttle,brake=pedals.step(target,speed,a.fixed_delta_seconds)
             steer=steering.step(formal_path,*carla_to_formal(location.x,location.y,pose.rotation.yaw),speed)['command']
             rows.append(dict(frame=snapshot.frame,time=snapshot.timestamp.elapsed_seconds,speed_mps=speed,
-                reference_distance_m=reference,front_offset_m=front,front_gap_m=reference-front,target_mps=target,
+                reference_distance_m=reference,front_offset_m=front,front_gap_m=reference-front,
+                control_front_offset_m=used_front,target_mps=target,
                 throttle=throttle,brake=brake,steering=steer,lateral_m=lateral))
             ego.apply_control(carla.VehicleControl(throttle=throttle,brake=brake,steer=max(-1,min(1,steer)),manual_gear_shift=True,gear=1))
             world.tick(20)

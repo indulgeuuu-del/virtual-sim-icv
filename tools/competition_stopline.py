@@ -1,7 +1,8 @@
 """Fixed-line experiment: actual nearest-line selection and Whole braking body.
 
-Inputs are straight-road reference distance and speed, not SDK objects. The
-inherited 4.38046 m offset and braking polynomial remain unchanged.
+Inputs are straight-road reference distance and speed, not SDK objects.
+Legacy calls retain the inherited offset/polynomial; explicit calls use measured
+geometry and optionally the shared C++ approach speed envelope.
 """
 import ctypes
 import hashlib
@@ -22,7 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def build_library():
     paths = ['competition/TrajectoryControl/src/core/stopline.cpp',
              'competition/TrajectoryControl/src/main_track.cpp',
-             'tools/native/stopline_bridge.cpp', 'tools/competition_stopline.py']
+             'tools/native/stopline_bridge.cpp', 'tools/competition_stopline.py',
+             'competition/util/StopLineControl.h']
     raw = {p: (ROOT / p).read_bytes() for p in paths}
     hashes = {p: hashlib.sha256(b).hexdigest() for p, b in raw.items()}
     out = ROOT / 'work/stopline_controller' / hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()[:20]
@@ -36,6 +38,7 @@ def build_library():
     brake = extract(read_source(raw[paths[1]]),
                     'if (potentialStopLine.type == StopLine::Type::Whole &&', '/* 半停止线，主车的策略是变道 */')
     code = code.replace('// @NEAREST@', nearest).replace('// @BRAKING@', brake)
+    code = code.replace('// @STOP_CONTROL@', read_source(raw[paths[4]]))
     out.mkdir(parents=True, exist_ok=True)
     (out / 'bridge.cpp').write_text(code, encoding='utf-8')
     vs = Path(os.environ.get('ProgramFiles(x86)', 'C:/Program Files (x86)')) / 'Microsoft Visual Studio/Installer/vswhere.exe'
@@ -57,7 +60,7 @@ def build_library():
     if result.returncode:
         raise RuntimeError(f'Build failed: {out / "compile.log"}')
     report = dict(source_sha256=hashes, binary_sha256=hashlib.sha256(dll.read_bytes()).hexdigest(),
-        sdk_build_verified=False, scope='production nearest stop-line and Whole braking; no constructors, map, drive or arbitration')
+        sdk_build_verified=False, scope='shared C++ legacy/approach control; legacy entry also executes nearest-line and Whole fragment; no constructors, map, drive or arbitration')
     meta.write_text(json.dumps(report, indent=2), encoding='utf-8')
     return dll, report
 
@@ -68,14 +71,23 @@ class StopLineController:
         self.dll = ctypes.CDLL(str(dll))
         self.dll.stopline_step.argtypes = [ctypes.c_double]*4
         self.dll.stopline_step.restype = ctypes.c_double
+        self.dll.stopline_explicit.argtypes = [ctypes.c_double]*5 + [ctypes.c_int]
+        self.dll.stopline_explicit.restype = ctypes.c_double
         param = ROOT / 'competition/TrajectoryControl/param.json'
         self.parameter_sha256 = hashlib.sha256(param.read_bytes()).hexdigest()
         self.margin = json.loads(read_source(param.read_bytes()))['stopLineDistThres']
 
-    def step(self, reference_distance, speed, cruise):
+    def step(self, reference_distance, speed, cruise, *, front_offset=None, policy='legacy'):
         if not all(math.isfinite(v) for v in (reference_distance, speed, cruise, self.margin)) or min(speed, cruise, self.margin) < 0:
             raise ValueError('Invalid stop-line state')
-        result = self.dll.stopline_step(reference_distance, speed, cruise, self.margin)
+        if policy not in ('legacy','approach') or (policy == 'approach' and front_offset is None):
+            raise ValueError('Approach requires explicit geometry and a known policy')
+        if front_offset is not None:
+            if not math.isfinite(front_offset) or front_offset < 0:
+                raise ValueError('Invalid reference-to-front offset')
+            result = self.dll.stopline_explicit(reference_distance,speed,cruise,self.margin,front_offset,policy=='approach')
+        else:
+            result = self.dll.stopline_step(reference_distance, speed, cruise, self.margin)
         if not math.isfinite(result) or result < 0:
             raise RuntimeError('Invalid native stop-line output')
         return result

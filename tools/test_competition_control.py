@@ -107,6 +107,10 @@ def main():
             name = 'util/StopController.h'
             raw_sources[name] = (subprocess.check_output(['git', 'show', f'{revision}:competition/{name}'], cwd=root)
                                  if revision else (base / name).read_bytes())
+        if b'StopLineControl.h' in raw_sources['TrajectoryControl/src/main_track.cpp']:
+            name = 'util/StopLineControl.h'
+            raw_sources[name] = (subprocess.check_output(['git', 'show', f'{revision}:competition/{name}'], cwd=root)
+                                 if revision else (base / name).read_bytes())
         sources = {}
         for name, raw in raw_sources.items():
             try:
@@ -310,6 +314,8 @@ def main():
             'double StopLine::calculateVehicleDistance(const SSD::SimPoint3D&) const { return 20; }',
             between(stopline, 'double StopLine::calculateVehicleDistance(', 'bool StopLine::isStopLineBehindVehicle('))
         stop_drive_body = read_source(root / 'tests/cpp/stopline_drive_test.cpp')
+        if 'util/StopLineControl.h' in sources:
+            stop_drive_body = sources['util/StopLineControl.h'] + '\n' + stop_drive_body
         stop_drive_parts = {
             '// @CONTROLLER@': support,
             '// @DEFAULT_AND_NEAREST@': between(stopline, 'bool calculateNearestStopLine(',
@@ -354,6 +360,8 @@ def main():
         (follow_dir / 'support.cpp').write_bytes(follow_support.encode('utf-8'))
         # Execute the real track input gate and obstacle-construction loops.
         # Obstacle internals/grouping remain fixtures; downstream planning is drive().
+        if 'util/StopLineControl.h' in sources:
+            (follow_dir / 'StopLineControl.h').write_bytes(sources['util/StopLineControl.h'].encode('utf-8'))
         track_prefix = sources['TrajectoryControl/src/main_track.cpp'].split(
             '\t\tFlagType::isCrosswalkExist = getCrossWalk();', 1)
         if len(track_prefix) != 2:
