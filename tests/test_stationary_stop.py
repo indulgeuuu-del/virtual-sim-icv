@@ -1,10 +1,50 @@
 import math
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+import contextlib
+import io
 
-from tools.carla_stationary_stop import projected_gap, stop_command, observed_dwell, speed_actuators, reference_to_body_offset
+from tools.carla_stationary_stop import (projected_gap, stop_command, observed_dwell, speed_actuators,
+                                       reference_to_body_offset, prepare_ego_transform, parse_args)
 
 
 class StationaryStopTests(unittest.TestCase):
+    def test_lane_center_spawn_removes_offset_and_preserves_height_without_mutation(self):
+        # SDK value-object boundary only; construction uses real helper logic.
+        carla = SimpleNamespace(Location=lambda **kw: SimpleNamespace(**kw),
+                               Rotation=lambda **kw: SimpleNamespace(**kw),
+                               Transform=lambda location, rotation: SimpleNamespace(location=location, rotation=rotation))
+        for yaw in (-90, 90, 180):
+            spawn = carla.Transform(carla.Location(x=-2.42, y=188, z=3.3),
+                                    carla.Rotation(pitch=0, yaw=yaw+1, roll=0))
+            lane = carla.Transform(carla.Location(x=-2.008, y=187.97, z=3),
+                                   carla.Rotation(pitch=2, yaw=yaw, roll=1))
+            actual = prepare_ego_transform(carla, spawn, lane, 'lane-center')
+            self.assertEqual((actual.location.x, actual.location.y, actual.location.z), (-2.008,187.97,3.3))
+            self.assertEqual(vars(actual.rotation), vars(lane.rotation))
+            actual.rotation.yaw = 0
+            actual.location.x = 99
+            self.assertEqual(lane.rotation.yaw, yaw)
+            self.assertEqual(spawn.location.x, -2.42)
+            self.assertEqual(lane.location.x, -2.008)
+
+    def test_original_map_spawn_remains_available_for_failure_comparison(self):
+        original = object()
+        self.assertIs(prepare_ego_transform(None, original, None, 'map-spawn'), original)
+        with self.assertRaises(ValueError):
+            prepare_ego_transform(None, original, None, 'unknown')
+
+    def test_route_selector_requires_complete_pair_and_nonnegative_spawn(self):
+        for options in (['--road-id','15'], ['--lane-id','-1'], ['--spawn-index','-1']):
+            with patch('sys.argv', ['experiment', *options]), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    parse_args()
+                self.assertEqual(error.exception.code, 2)
+        with patch('sys.argv', ['experiment','--road-id','15','--lane-id','-1','--spawn-index','224']):
+            args = parse_args()
+        self.assertEqual((args.road_id,args.lane_id,args.spawn_index,args.spawn_alignment), (15,-1,224,'lane-center'))
+
     def test_reference_geometry_supports_asymmetric_origins_and_reverse_axis(self):
         for direction in (1, -1):
             ego = [(direction*x, 0, 0) for x in (-1, 3)]

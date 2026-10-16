@@ -102,6 +102,20 @@ def stop_command(gap, speed, cruise, stop_gap):
     return target, 0.0, min(1.0, -0.45 * error), False
 
 
+def prepare_ego_transform(carla, spawn, lane_transform, alignment):
+    """Build a spawn pose without changing CARLA map transforms."""
+    if alignment == 'map-spawn':
+        return spawn
+    if alignment != 'lane-center':
+        raise ValueError('Unsupported spawn alignment')
+    # Map spawn points can be laterally displaced from their projected waypoint.
+    # Keep their ground clearance, but align x/y and orientation to the path.
+    return carla.Transform(
+        carla.Location(x=lane_transform.location.x, y=lane_transform.location.y, z=spawn.location.z),
+        carla.Rotation(pitch=lane_transform.rotation.pitch, yaw=lane_transform.rotation.yaw,
+                       roll=lane_transform.rotation.roll))
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scenario', choices=('stationary', 'stop-go', 'lead-brake'), default='stationary')
@@ -121,8 +135,17 @@ def parse_args():
     parser.add_argument('--exclusive-dwell', action='store_true', help='Require strictly more than dwell-seconds')
     parser.add_argument('--fixed-delta-seconds', type=float, default=0.05, help='Simulation step, 0.02..0.1 seconds')
     parser.add_argument('--no-realtime', action='store_true', help='Run without wall-clock pacing')
+    parser.add_argument('--road-id', type=int, help='Pin a Town01 road; must be paired with --lane-id')
+    parser.add_argument('--lane-id', type=int, help='Pin a lane on --road-id; no fallback to another road')
+    parser.add_argument('--spawn-index', type=int, help='Pin a Town01 spawn point index; no fallback')
+    parser.add_argument('--spawn-alignment', choices=('lane-center', 'map-spawn'), default='lane-center',
+                        help='Start on the lane centre; map-spawn reproduces historical lateral offsets')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
+    if (args.road_id is None) != (args.lane_id is None):
+        parser.error('--road-id and --lane-id must be supplied together')
+    if args.spawn_index is not None and args.spawn_index < 0:
+        parser.error('--spawn-index must be nonnegative')
     if args.speed_kmh is None:
         args.speed_kmh = 30.0 if args.scenario == 'lead-brake' else 10.0
     if args.gap is None:
@@ -234,8 +257,12 @@ def run(args):
         blueprint = library.find('vehicle.tesla.model3')
         ego = lead = None
         # Check the entire route, not just its endpoint: exclude bends and junctions.
-        for spawn in road_map.get_spawn_points():
+        for spawn_index, spawn in enumerate(road_map.get_spawn_points()):
+            if args.spawn_index is not None and spawn_index != args.spawn_index:
+                continue
             wp = road_map.get_waypoint(spawn.location)
+            if args.road_id is not None and (wp.road_id, wp.lane_id) != (args.road_id, args.lane_id):
+                continue
             forward = wp.transform.get_forward_vector()
             length = args.gap + 20 + (profile.sample(profile.end_time)[0] if profile else 0)
             samples = [wp]
@@ -252,6 +279,8 @@ def run(args):
                 samples.append(point)
             if wp.is_junction or len(samples) != len(range(2, math.ceil(length) + 1, 2)) + 1:
                 continue
+            map_spawn = spawn
+            spawn = prepare_ego_transform(carla, map_spawn, wp.transform, args.spawn_alignment)
             ego = world.try_spawn_actor(blueprint, spawn)
             if ego is None:
                 continue
@@ -348,6 +377,7 @@ def run(args):
         first['elapsed'] = 0.0
 
         def validate_state(state):
+            report['last_observation'] = dict(state)
             if state['gap_m'] <= 0 or collisions:
                 raise RuntimeError('Collision or body overlap detected')
             if abs(state['lateral_m']) > 0.4 or abs(state['yaw_error_deg']) > 3:
@@ -357,10 +387,15 @@ def run(args):
                 raise RuntimeError('Lead vehicle differs from prescribed position')
         report.update(map=road_map.name, vehicle=ego.type_id, initial=first,
                       ego_box_extent=dict(x=ego.bounding_box.extent.x, y=ego.bounding_box.extent.y),
-                      road_id=wp.road_id, lane_id=wp.lane_id, fixed_delta_seconds=dt,
+                      road_id=wp.road_id, lane_id=wp.lane_id, spawn_index=spawn_index, fixed_delta_seconds=dt,
                       formal_path=dict(start=steering_path[0], end=steering_path[-1], points=len(steering_path),
                                        coordinate_system='x,-CARLA_y,z',
                                        sha256=hashlib.sha256(json.dumps(steering_path).encode()).hexdigest()))
+        def pose(transform):
+            return dict(x=transform.location.x, y=transform.location.y, z=transform.location.z,
+                        pitch=transform.rotation.pitch, yaw=transform.rotation.yaw, roll=transform.rotation.roll)
+        report['spawn_setup'] = dict(alignment=args.spawn_alignment, map_spawn=pose(map_spawn),
+                                    ego_spawn=pose(spawn), lane_pose=pose(wp.transform))
         if abs(first['gap_m'] - args.gap) > 0.5 or abs(first['speed_mps'] - cruise) > 0.5:
             raise RuntimeError('Initial gap or speed outside experiment tolerance')
         print(f"Initial: {first['speed_mps'] * 3.6:.2f} km/h, body gap {first['gap_m']:.2f} m", flush=True)
