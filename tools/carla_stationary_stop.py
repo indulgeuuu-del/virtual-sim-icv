@@ -43,6 +43,31 @@ def speed_actuators(target, speed):
     return 0.0, min(1.0, -0.45 * error)
 
 
+class PISpeedActuators:
+    """Optional CARLA pedal experiment; never changes the requested speed.
+
+    Integral compensates persistent drivetrain load; conditional integration
+    prevents accumulation at saturated pedals. Gains are experimental, not SDK calibration.
+    """
+    def __init__(self):
+        self.integral = 0.0
+
+    def step(self, target, speed, dt):
+        if not all(math.isfinite(v) for v in (target, speed, dt)) or target < 0 or speed < 0 or not 0 < dt <= 0.25:
+            self.integral = 0.0
+            raise ValueError('Invalid PI speed input or sampling interval')
+        if target == 0:
+            self.integral = 0.0
+            return 0.0, 1.0
+        error = target - speed
+        candidate = max(0.0, min(0.55, self.integral + 0.5 * error * dt))
+        proposed = 0.35 * error + candidate
+        if not ((proposed > 0.55 and error > 0) or (proposed < 0 and error < 0)):
+            self.integral = candidate
+        effort = 0.35 * error + self.integral
+        return (min(0.55, effort), 0.0) if effort >= 0 else (0.0, min(1.0, -effort))
+
+
 def observed_dwell(samples, stop_gap, max_gap=0.25):
     """Measure logged standstill; stop_gap=None measures it regardless of location."""
     end = start = None
@@ -139,6 +164,10 @@ def parse_args():
     parser.add_argument('--no-realtime', action='store_true', help='Run without wall-clock pacing')
     parser.add_argument('--gear-mode', choices=('automatic', 'forward'), default='automatic',
                         help='CARLA actuator comparison only: automatic gearbox or fixed forward gear 1')
+    parser.add_argument('--speed-actuator', choices=('legacy', 'pi'), default='legacy',
+                        help='CARLA pedal mapping comparison; default preserves the original mapping')
+    parser.add_argument('--settle-seconds', type=float, default=0,
+                        help='Optional physical speed-control warm-up before measurement, 0..3 simulation seconds')
     parser.add_argument('--road-id', type=int, help='Pin a Town01 road; must be paired with --lane-id')
     parser.add_argument('--lane-id', type=int, help='Pin a lane on --road-id; no fallback to another road')
     parser.add_argument('--spawn-index', type=int, help='Pin a Town01 spawn point index; no fallback')
@@ -146,6 +175,10 @@ def parse_args():
                         help='Start on the lane centre; map-spawn reproduces historical lateral offsets')
     parser.add_argument('--output', type=Path)
     args = parser.parse_args()
+    if not math.isfinite(args.settle_seconds) or not 0 <= args.settle_seconds <= 3:
+        parser.error('--settle-seconds must be finite and in 0..3')
+    if args.controller != 'formal-follow' and (args.speed_actuator != 'legacy' or args.settle_seconds):
+        parser.error('PI/settling comparisons require formal-follow')
     if (args.road_id is None) != (args.lane_id is None):
         parser.error('--road-id and --lane-id must be supplied together')
     if args.spawn_index is not None and args.spawn_index < 0:
@@ -196,6 +229,7 @@ def run(args):
     following = None
     steering = None
     dt = args.fixed_delta_seconds
+    pi_actuators = PISpeedActuators() if args.speed_actuator == 'pi' else None
     profile = StopGoProfile(speed=args.speed_kmh / 3.6) if args.scenario == 'stop-go' else None
     if args.scenario == 'lead-brake':
         profile = BrakingProfile(speed=args.speed_kmh / 3.6)
@@ -206,6 +240,9 @@ def run(args):
                   source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
     report['target_rise_limit'] = dict(enabled=args.max_target_rise > 0, rate_mps2=args.max_target_rise,
         max_observation_interval_s=0.25, scope='engineering request ramp, not measured acceleration or official scoring')
+    report['speed_actuator'] = dict(mode=args.speed_actuator, kp=0.35,
+        ki=0.5 if pi_actuators else 0, throttle_ceiling=0.55,
+        scope='CARLA experimental pedals; no SimOne calibration or actual acceleration guarantee')
     client = carla.Client('127.0.0.1', 2000)
     client.set_timeout(10.0)
     try:
@@ -276,7 +313,7 @@ def run(args):
             if args.road_id is not None and (wp.road_id, wp.lane_id) != (args.road_id, args.lane_id):
                 continue
             forward = wp.transform.get_forward_vector()
-            length = args.gap + 20 + (profile.sample(profile.end_time)[0] if profile else 0)
+            length = args.gap + 20 + (profile.sample(profile.end_time)[0] if profile else 0) + args.speed_kmh/3.6*args.settle_seconds
             samples = [wp]
             for distance in range(2, math.ceil(length) + 1, 2):
                 candidates = wp.next(float(distance))
@@ -339,6 +376,24 @@ def run(args):
         for _ in range(20):
             ego.set_target_velocity(carla.Vector3D(*(v * cruise for v in axis)))
             world.tick(20.0)
+        # Release velocity injection and let the actual pedal controller establish
+        # drivetrain equilibrium. This is before the scored observation window.
+        settling = []
+        settle_origin = ego.get_location()
+        for _ in range(round(args.settle_seconds / dt)):
+            speed = ego.get_velocity().length()
+            throttle, brake = (pi_actuators.step(cruise, speed, dt) if pi_actuators
+                               else speed_actuators(cruise, speed))
+            ego.apply_control(carla.VehicleControl(throttle=throttle, brake=brake,
+                manual_gear_shift=args.gear_mode == 'forward', gear=1 if args.gear_mode == 'forward' else 0))
+            # Keep the lead away during setup, including short-gap stop-go runs.
+            lead.set_transform(carla.Transform(lead_origin + (ego.get_location()-settle_origin), lead.get_transform().rotation))
+            world.tick(20.0)
+            settling.append(dict(speed_mps=ego.get_velocity().length(), throttle=throttle, brake=brake))
+            if collisions:
+                raise RuntimeError('Collision during physical speed settling')
+        report['speed_settling'] = dict(seconds=len(settling)*dt, samples=settling,
+            scope='pre-measurement physical pedals, no velocity injection; final gap reset before measurement')
         et, lt = ego.get_transform(), lead.get_transform()
         ego_vertices = [(v.x, v.y, v.z) for v in ego.bounding_box.get_world_vertices(et)]
         lead_vertices = [(v.x, v.y, v.z) for v in lead.bounding_box.get_world_vertices(lt)]
@@ -447,7 +502,8 @@ def run(args):
                         timestamp=state['time'] if args.max_target_rise > 0 else None,
                         max_speed_rise=args.max_target_rise if args.max_target_rise > 0 else None)
                 target = formal['target_speed']
-                throttle, brake = speed_actuators(target, state['speed_mps'])
+                throttle, brake = (pi_actuators.step(target, state['speed_mps'], dt) if pi_actuators
+                                   else speed_actuators(target, state['speed_mps']))
             else:
                 target, throttle, brake, _ = stop_command(state['gap_m'], state['speed_mps'], cruise, args.stop_gap)
             # The front car remains present: ready means dwell completed, not permission to drive into it.

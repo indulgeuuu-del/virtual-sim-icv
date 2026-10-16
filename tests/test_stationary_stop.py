@@ -6,10 +6,45 @@ import contextlib
 import io
 
 from tools.carla_stationary_stop import (projected_gap, stop_command, observed_dwell, speed_actuators,
-                                       reference_to_body_offset, prepare_ego_transform, parse_args)
+                                       reference_to_body_offset, prepare_ego_transform, parse_args, PISpeedActuators)
 
 
 class StationaryStopTests(unittest.TestCase):
+    def test_settling_options_are_bounded_and_do_not_change_defaults(self):
+        with patch('sys.argv',['experiment']):
+            args=parse_args()
+        self.assertEqual((args.speed_actuator,args.settle_seconds,args.gear_mode),('legacy',0,'automatic'))
+        for opts in (['--settle-seconds','nan'],['--settle-seconds','-1'],['--settle-seconds','4'],
+                     ['--controller','experimental','--speed-actuator','pi']):
+            with patch('sys.argv',['experiment',*opts]),contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit): parse_args()
+
+    def test_pi_compensates_persistent_load_and_stop_clears_history(self):
+        controller = PISpeedActuators()
+        values = [controller.step(8,7.5,0.05)[0] for _ in range(10)]
+        self.assertGreater(values[-1], values[0])
+        self.assertGreater(controller.step(8,8,0.05)[0],0)
+        self.assertEqual(controller.step(0,8,0.05),(0,1))
+        self.assertEqual(controller.step(8,8,0.05),(0,0))
+
+    def test_pi_saturation_does_not_store_unbounded_error(self):
+        controller = PISpeedActuators()
+        for _ in range(1000):
+            self.assertEqual(controller.step(30,0,0.05),(0.55,0))
+        self.assertEqual(controller.step(3,3,0.05),(0,0))
+        self.assertGreater(controller.step(1,3,0.05)[1],0)
+
+    def test_pi_invalid_inputs_clear_history_and_time_step_is_physical(self):
+        for bad in ((math.nan,1,0.05),(1,-1,0.05),(1,1,0),(1,1,0.3)):
+            c=PISpeedActuators()
+            c.step(2,1,0.05)
+            with self.assertRaises(ValueError): c.step(*bad)
+            self.assertEqual(c.step(1,1,0.05),(0,0))
+        a,b=PISpeedActuators(),PISpeedActuators()
+        for _ in range(4): a.step(2,1,0.05)
+        for _ in range(2): b.step(2,1,0.1)
+        self.assertAlmostEqual(a.integral,b.integral)
+
     def test_lane_center_spawn_removes_offset_and_preserves_height_without_mutation(self):
         # SDK value-object boundary only; construction uses real helper logic.
         carla = SimpleNamespace(Location=lambda **kw: SimpleNamespace(**kw),
