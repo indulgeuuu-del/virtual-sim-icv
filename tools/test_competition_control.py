@@ -27,6 +27,11 @@ RAW_OBSTACLE_TESTS = [
 OBSTACLE_HEADING_TESTS = ['obstacle_heading_' + kind for kind in
     ('failed', 'zero', 'nan', 'inf', 'empty', 'initial', 'repeated', 'static', 'reverse', 'send_failure', 'pid')]
 
+OBSTACLE_PROJECTION_TESTS = [f'projection_{group}_{stage}_{mode}'
+    for group in ('raw', 'group') for stage in range(1, 4) for mode in range(1, 6)
+] + [f'projection_{group}_3_{mode}' for group in ('raw', 'group') for mode in (6, 7)
+] + ['projection_initial', 'projection_repeated', 'projection_crossroad_valid', 'projection_crossroad_failure']
+
 LOOP_TESTS = (
     'empty', 'defaults', 'explicit', 'interpolation', 'transition',
     'transition_parameters', 'first_route_failure', 'interpolation_failure',
@@ -223,6 +228,15 @@ def main():
         follow_dir.mkdir(exist_ok=True)
         for name in ('main.h', 'test.cpp'):
             shutil.copyfile(root / 'tests/cpp/follow_input_stub' / name, follow_dir / name)
+        # Execute exact projection sections from both production constructors.
+        # Geometry, widths, prediction and classification remain outside this fixture.
+        projection_parts = obstacle.split('/* 计算相对于主车的 ST 坐标 */')[1:]
+        if len(projection_parts) != 2:
+            raise ValueError('review obstacle constructor projection extraction')
+        fixture = read_source(follow_dir / 'main.h')
+        for marker, part in zip(('// @RAW_PROJECTION@', '// @GROUP_PROJECTION@'), projection_parts):
+            fixture = fixture.replace(marker, part.split('SimOneAPI::GetLaneWidth(', 1)[0])
+        (follow_dir / 'main.h').write_bytes(fixture.encode('utf-8'))
         (follow_dir / 'controller.hpp').write_bytes(support.encode('utf-8'))
         (follow_dir / 'main_follow.cpp').write_bytes(sources['TrajectoryControl/src/main_follow.cpp'].encode('utf-8'))
         fetch = sources['TrajectoryControl/src/main.cpp'].split('bool updateObstacleData(', 1)[1]
@@ -301,7 +315,7 @@ def main():
                      'map_initial','map_repeated','heading_failed','heading_nonfinite','heading_zero',
                      'link_partial','link_cleared','link_initial','link_repeated','road_invalid','road_overflow',
                      'successor_ambiguous','link_empty_valid','junction_valid',
-                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'] + RAW_OBSTACLE_TESTS + OBSTACLE_HEADING_TESTS, 'follow_input')
+                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'] + RAW_OBSTACLE_TESTS + OBSTACLE_HEADING_TESTS + OBSTACLE_PROJECTION_TESTS, 'follow_input')
         compile_run(follow_dir, ['track_prefix.cpp', 'support.cpp', 'test.cpp'],
                     ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
                      'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
@@ -310,7 +324,7 @@ def main():
                      'map_initial','map_repeated','heading_failed','heading_nonfinite','heading_zero',
                      'link_partial','link_cleared','link_initial','link_repeated','road_invalid','road_overflow',
                      'successor_ambiguous','link_empty_valid','junction_valid',
-                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'] + RAW_OBSTACLE_TESTS + OBSTACLE_HEADING_TESTS, 'track_input', ['/DTEST_TRACK_PREFIX'])
+                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'] + RAW_OBSTACLE_TESTS + OBSTACLE_HEADING_TESTS + OBSTACLE_PROJECTION_TESTS, 'track_input', ['/DTEST_TRACK_PREFIX'])
         report['passed'] = bool(report['tests']) and all(t['passed'] for t in report['tests'].values())
     except (OSError, ValueError, IndexError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
         report['error'] = f'{type(error).__name__}: {error}'

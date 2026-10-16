@@ -1,11 +1,24 @@
 #include "main.h"
+#include <cstdio>
 void require(bool ok,const char* message) { if(!ok) throw std::runtime_error(message); }
 int main(int argc,char** argv) {
     try {
         require(argc==2,"test name required");
         const std::string name=argv[1];
         inputs={{},{},{}};
-        if(name.rfind("obstacle_heading_",0)==0) {
+        if(name.rfind("projection_",0)==0) {
+            if(name=="projection_initial") { inputs[0].obstacleProjection=1; inputs[0].projectionMode=1; }
+            else if(name=="projection_repeated") { for(int i=0;i<2;++i) { inputs[i].obstacleProjection=1; inputs[i].projectionMode=1; } }
+            else if(name=="projection_crossroad_valid") { for(auto& a:inputs) a.crossRoad=true; }
+            else if(name=="projection_crossroad_failure") { for(auto& a:inputs) a.crossRoad=true; inputs[1].obstacleProjection=3; inputs[1].projectionMode=1; }
+            else {
+                char group[16]={}; int stage=0,mode=0;
+                require(std::sscanf(name.c_str(),"projection_%15[^_]_%d_%d",group,&stage,&mode)==3,"bad projection case");
+                inputs[1].obstacleProjection=stage; inputs[1].projectionMode=mode;
+                if(std::strcmp(group,"group")==0) for(auto& a:inputs) { a.grouped=true; a.count=2; }
+            }
+        }
+        else if(name.rfind("obstacle_heading_",0)==0) {
             if(name=="obstacle_heading_failed") inputs[1].obstacleHeading=1;
             else if(name=="obstacle_heading_zero") inputs[1].obstacleHeading=2;
             else if(name=="obstacle_heading_nan") inputs[1].obstacleHeading=3;
@@ -108,7 +121,7 @@ int main(int argc,char** argv) {
         for(size_t i=0;i<inputs.size();++i) {
             const auto& input=inputs[i];
             const bool rawValid=input.rawIndex>=input.count || std::isfinite(input.rawValue);
-            if(input.gps && input.obstacle && input.count>=0 && input.count<=2 && rawValid && input.route && mapValid(input) && input.obstacleHeading==0) {
+            if(input.gps && input.obstacle && input.count>=0 && input.count<=2 && rawValid && input.route && mapValid(input) && input.obstacleHeading==0 && input.obstacleProjection==0) {
                 ++expectedDrives;
                 require(sends[i].throttle>0,"fresh input failed to resume");
             } else {
@@ -134,6 +147,11 @@ int main(int argc,char** argv) {
             }
         }
         require(drives==expectedDrives,"invalid input reached drive or valid input not recovered");
+#ifdef TEST_TRACK_PREFIX
+        if(name.rfind("projection_group_",0)==0) require(groupProjectionCalls>0,"merged projection never exercised");
+#else
+        if(name.rfind("projection_",0)==0) require(rawProjectionCalls>0,"raw projection never exercised");
+#endif
         require(obstacleReads==3 && gpsReads==3,"one stream skipped after other failure");
         if(name!="empty_valid") require(!globalLogger.text.empty(),"failure has no diagnostic");
         if(name=="send_failure") require(globalLogger.text.find("SetDrive")!=std::string::npos,"stop send failure not diagnosed");

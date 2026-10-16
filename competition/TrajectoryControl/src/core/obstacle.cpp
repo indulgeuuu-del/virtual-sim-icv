@@ -1,5 +1,7 @@
 ﻿#include <set>
 #include <unordered_set>
+#include <limits>
+#include <stdexcept>
 #include "UtilMath.h"
 #include "define.h"
 #include "logger.hpp"
@@ -339,9 +341,11 @@ Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle) :
 	isSameRoadWithMainVehicle = isSameRoadId(laneID, mainVehicle.laneID);
 
     /* 计算相对于主车的 ST 坐标 */
+    sRelativeToVehicle = tRelativeToVehicle = std::numeric_limits<double>::quiet_NaN();
     if (isSameRoadWithMainVehicle) // 与主车同道路的时候才能计算 ST 坐标
     {
-        SimOneAPI::GetLaneST(mainVehicle.laneID, pt, sRelativeToVehicle, tRelativeToVehicle);
+        if (!SimOneAPI::GetLaneST(mainVehicle.laneID, pt, sRelativeToVehicle, tRelativeToVehicle))
+            throw std::domain_error("Obstacle projection onto vehicle lane failed");
     }
     else
     {
@@ -356,13 +360,21 @@ Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle) :
             };
         sRelativeToVehicle = mainVehicle.s + computeRoadDistance(mainVehicle.pt, pt, mainVehicle.laneAzimuth);
     }
+    if (!std::isfinite(sRelativeToVehicle) || !std::isfinite(tRelativeToVehicle))
+        throw std::domain_error("Obstacle vehicle-relative projection is invalid");
 
     /* 计算相对于自身所在车道的 ST 坐标 */
-    SimOneAPI::GetLaneST(laneID, pt, sRelativeToLane, tRelativeToLane);
+    sRelativeToLane = tRelativeToLane = std::numeric_limits<double>::quiet_NaN();
+    if (!SimOneAPI::GetLaneST(laneID, pt, sRelativeToLane, tRelativeToLane)
+        || !std::isfinite(sRelativeToLane) || !std::isfinite(tRelativeToLane))
+        throw std::domain_error("Obstacle lane projection is unavailable");
 
     /* 计算相对于自身所在道路的 ST 坐标 */
-    double z = 0.0f;
-    SimOneAPI::GetRoadST(laneID, pt, sRelativeToRoad, tRelativeToRoad, z);
+    double z = std::numeric_limits<double>::quiet_NaN();
+    sRelativeToRoad = tRelativeToRoad = std::numeric_limits<double>::quiet_NaN();
+    if (!SimOneAPI::GetRoadST(laneID, pt, sRelativeToRoad, tRelativeToRoad, z)
+        || !std::isfinite(sRelativeToRoad) || !std::isfinite(tRelativeToRoad) || !std::isfinite(z))
+        throw std::domain_error("Obstacle road projection is unavailable");
 
 	SimOneAPI::GetLaneWidth(laneID, pt, laneWidth);
 	roadWidth = getRoadWidth(laneID, pt);
@@ -530,9 +542,11 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
         isSameRoadWithMainVehicle = isSameRoadId(laneID, mainVehicle.laneID);
 
         /* 计算相对于主车的 ST 坐标 */
+        sRelativeToVehicle = tRelativeToVehicle = std::numeric_limits<double>::quiet_NaN();
         if (isSameRoadWithMainVehicle) // 与主车同道路的时候才能计算 ST 坐标
         {
-            SimOneAPI::GetLaneST(mainVehicle.laneID, pt, sRelativeToVehicle, tRelativeToVehicle);
+            if (!SimOneAPI::GetLaneST(mainVehicle.laneID, pt, sRelativeToVehicle, tRelativeToVehicle))
+                throw std::domain_error("Merged obstacle projection onto vehicle lane failed");
         }
         else
         {
@@ -547,13 +561,21 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
                 };
             sRelativeToVehicle = mainVehicle.s + computeRoadDistance(mainVehicle.pt, pt, mainVehicle.laneAzimuth);
         }
+        if (!std::isfinite(sRelativeToVehicle) || !std::isfinite(tRelativeToVehicle))
+            throw std::domain_error("Merged obstacle vehicle-relative projection is invalid");
 
         /* 计算相对于自身所在车道的 ST 坐标 */
-        SimOneAPI::GetLaneST(laneID, pt, sRelativeToLane, tRelativeToLane);
+        sRelativeToLane = tRelativeToLane = std::numeric_limits<double>::quiet_NaN();
+        if (!SimOneAPI::GetLaneST(laneID, pt, sRelativeToLane, tRelativeToLane)
+            || !std::isfinite(sRelativeToLane) || !std::isfinite(tRelativeToLane))
+            throw std::domain_error("Merged obstacle lane projection is unavailable");
 
         /* 计算相对于自身所在道路的 ST 坐标 */
-        double z = 0.0f;
-        SimOneAPI::GetRoadST(laneID, pt, sRelativeToRoad, tRelativeToRoad, z);
+        double z = std::numeric_limits<double>::quiet_NaN();
+        sRelativeToRoad = tRelativeToRoad = std::numeric_limits<double>::quiet_NaN();
+        if (!SimOneAPI::GetRoadST(laneID, pt, sRelativeToRoad, tRelativeToRoad, z)
+            || !std::isfinite(sRelativeToRoad) || !std::isfinite(tRelativeToRoad) || !std::isfinite(z))
+            throw std::domain_error("Merged obstacle road projection is unavailable");
 
         SimOneAPI::GetLaneWidth(laneID, pt, laneWidth);
         roadWidth = getRoadWidth(laneID, pt);

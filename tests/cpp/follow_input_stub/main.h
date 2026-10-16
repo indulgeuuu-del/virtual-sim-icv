@@ -78,6 +78,8 @@ struct Timer { void tic() {} double get() const { return 0.1; } };
 inline Timer timer;
 inline float calculateFps(int,double) { return 10; }
 struct Input { bool gps=true, obstacle=true, send=true; int count=1; bool route=true;
+    int obstacleProjection=0, projectionMode=0;
+    bool grouped=false, crossRoad=false;
     int obstacleHeading=0; // 1 API failure, 2 zero, 3 NaN, 4 infinity, 5 empty lane
     int rawField=0, rawIndex=0; float rawValue=100;
     bool near=true, projection=true, emptyLane=false, finiteProjection=true, finitePosition=true;
@@ -117,10 +119,26 @@ inline bool GetNearMostLane(const SSD::SimPoint3D&,SSD::SimString& lane,double& 
     if(current().largeRoad) lane="999999999999999999999_0_1";
     return current().near; // Failure may still write an apparently valid lane.
 }
-inline bool GetLaneST(const SSD::SimString&,const SSD::SimPoint3D&,double& s,double& t) {
+inline bool obstacleProjectionResult(int stage,double& s,double& t) {
+    if(current().obstacleProjection==stage) {
+        if(current().projectionMode==1) return false; // leave output untouched
+        if(current().projectionMode==2) { s=999; return false; }
+        if(current().projectionMode==3) { s=std::nan(""); t=0; return true; }
+        if(current().projectionMode==4) { s=100; t=std::numeric_limits<double>::infinity(); return true; }
+        if(current().projectionMode==5) { t=0; return true; } // incomplete successful output
+    }
+    s=100; t=0; return true;
+}
+inline bool GetLaneST(const SSD::SimString& lane,const SSD::SimPoint3D& pt,double& s,double& t) {
+    if(pt.x==100) return obstacleProjectionResult(std::strcmp(lane.GetString(),"obstacle")==0 ? 2 : 1,s,t);
     s=current().projection ? 10 : 999;
     t=current().finiteProjection ? 0 : std::nan("");
     return current().projection;
+}
+inline bool GetRoadST(const SSD::SimString&,const SSD::SimPoint3D&,double& s,double& t,double& z) {
+    if(current().obstacleProjection!=3 || current().projectionMode!=7) z=0;
+    if(current().obstacleProjection==3 && current().projectionMode==6) z=std::nan("");
+    return obstacleProjectionResult(3,s,t);
 }
 inline bool GetInertialFromLaneST(const SSD::SimString& lane,double,double,SSD::SimPoint3D& pt,SSD::SimPoint3D& dir) {
     if(std::strcmp(lane.GetString(),"obstacle")==0 || lane.Empty()) {
@@ -157,6 +175,7 @@ inline bool GetGroundTruth(const char*, GroundTruth* out) {
     }
     *out=GroundTruth{};
     out->obstacleSize=current().count;
+    if(current().grouped) for(auto& item:out->obstacle) item.velX=0;
     auto& raw=out->obstacle[current().rawIndex];
     float* fields[]={&raw.posX,&raw.posY,&raw.posZ,&raw.velX,&raw.velY,&raw.velZ,&raw.oriZ,&raw.width,&raw.length};
     *fields[current().rawField]=current().rawValue;
@@ -196,22 +215,39 @@ inline SSD::SimString m_SampleGetNearMostLane(const SSD::SimPoint3D& pt) {
     SSD::SimString lane; double s,t,sc,tc;
     SimOneAPI::GetNearMostLane(pt,lane,s,t,sc,tc); return lane;
 }
+inline int rawProjectionCalls=0,groupProjectionCalls=0;
 struct Obstacle {
     enum class Type { Static, Vertical, Horizental, AmongCrosswalk };
     Type type=Type::Horizental;
     double sRelativeToVehicle=100;
+    double tRelativeToVehicle=0,sRelativeToLane=100,tRelativeToLane=0,sRelativeToRoad=100,tRelativeToRoad=0;
+    SSD::SimPoint3D pt{100,0,0};
+    SSD::SimString laneID{"obstacle"};
     float velocity=3;
     bool isSameLaneWithMainVehicle=true, isSameRoadWithMainVehicle=true;
     Obstacle() = default;
     explicit Obstacle(const RawObstacle& raw): sRelativeToVehicle(raw.s) {
         // Exercise the real helper; full map-dependent construction remains outside this fixture.
         getLaneAzimuth(inputs.at(waits-1).obstacleHeading==5 ? "" : "obstacle");
+        isSameRoadWithMainVehicle=!inputs.at(waits-1).crossRoad;
+        projectRaw();
     }
-    explicit Obstacle(const std::vector<size_t>& indices): Obstacle(pObstacle->obstacle[indices.at(0)]) {}
+    explicit Obstacle(const std::vector<size_t>& indices) {
+        if(indices.size()==1) { *this=Obstacle(pObstacle->obstacle[indices.at(0)]); return; }
+        getLaneAzimuth(inputs.at(waits-1).obstacleHeading==5 ? "" : "obstacle");
+        isSameRoadWithMainVehicle=!inputs.at(waits-1).crossRoad;
+        projectGroup();
+    }
+    void projectRaw() { ++rawProjectionCalls;
+        // @RAW_PROJECTION@
+    }
+    void projectGroup() { ++groupProjectionCalls;
+        // @GROUP_PROJECTION@
+    }
 };
 inline float groupingDistThres=3;
 inline void groupObstacleByDist(const std::vector<size_t>& indices,float,std::vector<std::vector<size_t>>& groups) {
-    for(auto i:indices) groups.push_back({i});
+    if(!indices.empty()) groups.push_back(indices);
 }
 inline std::vector<Obstacle> obstacleList;
 inline int navigationCalls=0;
