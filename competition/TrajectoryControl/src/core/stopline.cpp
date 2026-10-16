@@ -5,6 +5,33 @@
 #include "stopline.h"
 #include <stdexcept>
 
+// 查询接口返回类型尚待本届SDK核验；先验证实际取得的首条停止线几何。
+static bool readStopLineEndpoints(const SSD::SimVector<HDMapStandalone::MObject>& lines,
+    SSD::SimPoint3D& src, SSD::SimPoint3D& dst)
+{
+    if (lines.size() == 0 || lines[0].boundaryKnots.size() < 2) return false;
+    const auto& a = lines[0].boundaryKnots[0];
+    const auto& b = lines[0].boundaryKnots[1];
+    auto finite = [](const SSD::SimPoint3D& p) {
+        return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z);
+    };
+    if (!finite(a) || !finite(b) || (a.x == b.x && a.y == b.y)) return false;
+    src = a;
+    dst = b;
+    return true;
+}
+
+static void requireStopConstraint(StopLine& line, const char* reason)
+{
+    line.type = StopLine::Type::Whole;
+    line.strategy = StopLine::Strategy::StopStart;
+    line.isValid = line.isVechicleInSameLane = true;
+    line.isBehind = false;
+    line.toVehicleDist = line.offset = 0.0f;
+    line.src = line.dst = line.mid = mainVehicle.pt;
+    LOG << reason;
+}
+
 // 计算到主车最近的停止线
 bool calculateNearestStopLine(const std::vector<StopLine>& list, StopLine& stopLine, float& distance)
 {
@@ -58,8 +85,10 @@ StopLine::StopLine(const HDMapStandalone::MSignal& light) :
     SSD::SimVector<HDMapStandalone::MObject> trafficLightStopLineList;
     SimOneAPI::GetStoplineList(light, mainVehicle.laneID, trafficLightStopLineList);
 
-    src = trafficLightStopLineList[0].boundaryKnots[0];
-    dst = trafficLightStopLineList[0].boundaryKnots[1];
+    if (!readStopLineEndpoints(trafficLightStopLineList, src, dst)) {
+        requireStopConstraint(*this, "Traffic-light stop line unavailable: requesting stop");
+        return;
+    }
     mid = SSD::SimPoint3D(0.5 * (src.x + dst.x), 0.5 * (src.y + dst.y), 0.5 * (src.z + dst.z));
 
     toVehicleDist = calculateVehicleDistance(mainVehicle.pt);
@@ -76,8 +105,10 @@ StopLine::StopLine(Obstacle& obstacle) :
 
         SSD::SimVector<HDMapStandalone::MObject> crosswalkStopLineList;
         SimOneAPI::GetSpecifiedLaneStoplineList(mainVehicle.laneID, crosswalkStopLineList);
-        src = crosswalkStopLineList[0].boundaryKnots[0];
-        dst = crosswalkStopLineList[0].boundaryKnots[1];
+        if (!readStopLineEndpoints(crosswalkStopLineList, src, dst)) {
+            requireStopConstraint(*this, "Crosswalk stop line unavailable: requesting stop");
+            return;
+        }
 
         offset = 0.0f;
         isValid = true;

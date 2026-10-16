@@ -184,6 +184,11 @@ def main():
             'class StopLine {', '// 计算到主车最近的停止线'))
         stop_fixture = stop_fixture.replace('// @CONSTRUCTOR@', between(stopline,
             'StopLine::StopLine(Obstacle& obstacle)', 'StopLine::StopLine(const ManualStopLineReservoir&'))
+        stop_helpers = (between(stopline, 'static bool readStopLineEndpoints(', 'bool calculateNearestStopLine(')
+                        if 'static bool readStopLineEndpoints(' in stopline else '')
+        stop_fixture = stop_fixture.replace('// @LIGHT_CONSTRUCTOR@', between(stopline,
+            'StopLine::StopLine(const HDMapStandalone::MSignal& light)', 'StopLine::StopLine(Obstacle& obstacle)'))
+        stop_fixture = stop_fixture.replace('double StopLine::calculateVehicleDistance', stop_helpers + '\ndouble StopLine::calculateVehicleDistance', 1)
         stop_fixture = stop_fixture.replace('// @PROJECTION@', between(stopline,
             'bool StopLine::checkVechicleInSameLane(', 'bool getLaneChangePath(StopLine& stopLine)'))
         (output / 'stopline_projection.cpp').write_bytes(stop_fixture.encode('utf-8'))
@@ -372,7 +377,9 @@ def main():
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
         compile_run(output, ['stopline_projection.cpp'], ['valid','outside','reversed']
                     + [f'{fault}_{call}' for fault in ('unwritten','written','nan_s','nan_t','inf_z')
-                       for call in range(3)], 'stopline_projection')
+                       for call in range(3)]
+                    + [f'{kind}_{fault}' for kind in ('light','crosswalk')
+                       for fault in ('valid','empty','knots0','knots1','nan','inf','degenerate')], 'stopline_projection')
         compile_run(output, ['grouped_constructor.cpp'],
                     ['exact','below','above','chain','sparse','reordered','empty','recovery'], 'grouped_constructor')
         compile_run(output, ['constructed_follow.cpp'], ['valid','prediction_nan','prediction_inf','prediction_growth',

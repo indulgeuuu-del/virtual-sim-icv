@@ -8,9 +8,13 @@
 #include <iostream>
 namespace SSD {
 struct SimPoint3D { double x=0,y=0,z=0; SimPoint3D(double a=0,double b=0,double c=0):x(a),y(b),z(c) {} };
-template<class T> using SimVector=std::vector<T>;
+template<class T> struct SimVector:std::vector<T> {
+    using std::vector<T>::vector;
+    T& operator[](size_t i) { return this->at(i); }
+    const T& operator[](size_t i) const { return this->at(i); }
+};
 }
-namespace HDMapStandalone { struct MSignal {}; struct MObject { std::vector<SSD::SimPoint3D> boundaryKnots; }; }
+namespace HDMapStandalone { struct MSignal {}; struct MObject { SSD::SimVector<SSD::SimPoint3D> boundaryKnots; }; }
 struct ManualStopLineReservoir {};
 struct Obstacle {
     enum class Type { Static,Horizental,Vertical,AmongCrosswalk } type=Type::Static;
@@ -40,16 +44,43 @@ bool GetRoadST(int,const SSD::SimPoint3D&,double& s,double& t,double& z) {
     }
     return true;
 }
-void GetSpecifiedLaneStoplineList(int,SSD::SimVector<HDMapStandalone::MObject>&) { throw std::runtime_error("crosswalk outside scope"); }
+void fillLines(SSD::SimVector<HDMapStandalone::MObject>& lines) {
+    if(fault=="empty") return;
+    HDMapStandalone::MObject line;line.boundaryKnots={{20,2,0},{20,-2,0}};
+    if(fault=="knots0") line.boundaryKnots.clear();
+    if(fault=="knots1") line.boundaryKnots.resize(1);
+    if(fault=="nan") line.boundaryKnots[0].x=std::nan("");
+    if(fault=="inf") line.boundaryKnots[1].z=std::numeric_limits<double>::infinity();
+    if(fault=="degenerate") line.boundaryKnots[1]=line.boundaryKnots[0];
+    lines.push_back(line);
+}
+void GetSpecifiedLaneStoplineList(int,SSD::SimVector<HDMapStandalone::MObject>& lines) { fillLines(lines); }
+void GetStoplineList(const HDMapStandalone::MSignal&,int,SSD::SimVector<HDMapStandalone::MObject>& lines) { fillLines(lines); }
 }
 double StopLine::calculateVehicleDistance(const SSD::SimPoint3D&) const { return 20; }
 bool StopLine::isStopLineBehindVehicle(const SSD::SimPoint3D&,const SSD::SimPoint3D&,const SSD::SimPoint3D&,const SSD::SimPoint3D&,const SSD::SimPoint3D&) { return false; }
 // @CONSTRUCTOR@
 // @PROJECTION@
+// @LIGHT_CONSTRUCTOR@
 int main(int argc,char** argv) {
     try {
         if(argc!=2) throw std::runtime_error("missing case");
         std::string name=argv[1];Obstacle obstacle;
+        if(name.rfind("light_",0)==0 || name.rfind("crosswalk_",0)==0) {
+            bool light=name.rfind("light_",0)==0;
+            fault=name.substr(name.find('_')+1);
+            obstacle.type=Obstacle::Type::AmongCrosswalk;
+            StopLine result=light ? StopLine(HDMapStandalone::MSignal{}) : StopLine(obstacle);
+            if(!result.isValid || result.isBehind || !result.isVechicleInSameLane
+                || result.type!=StopLine::Type::Whole || result.strategy!=StopLine::Strategy::StopStart
+                || result.offset!=0 || result.toVehicleDist!=(fault=="valid" ? 20 : 0))
+                throw std::runtime_error("bad map list did not retain stop constraint");
+            if(fault!="valid" && logText.str().empty()) throw std::runtime_error("missing map failure log");
+            fault="valid";calls=0;
+            StopLine recovered=light ? StopLine(HDMapStandalone::MSignal{}) : StopLine(obstacle);
+            if(recovered.toVehicleDist!=20 || !recovered.isValid) throw std::runtime_error("map list recovery failed");
+            std::cout<<"PASS";return 0;
+        }
         bool invalid=name!="valid" && name!="outside" && name!="reversed";
         if(invalid) {
             auto split=name.find_last_of('_');fault=name.substr(0,split);badCall=std::stoi(name.substr(split+1));
