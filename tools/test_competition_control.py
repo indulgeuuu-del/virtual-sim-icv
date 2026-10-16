@@ -136,11 +136,15 @@ def main():
         obstacle = sources['TrajectoryControl/src/core/obstacle.cpp']
         boundary = between(obstacle, 'void getObstacleLaneSidePosition(', '// 可以用 ST 坐标')
         boundary_harness = read_source(root / 'tests/cpp/obstacle_boundary_test.cpp')
+        checked_lane = (between(obstacle, 'static SSD::SimString getObstacleLaneChecked(', 'void getObstacleLaneSidePosition(')
+                        if 'static SSD::SimString getObstacleLaneChecked(' in obstacle else '')
+        boundary_harness = boundary_harness.replace('// @CHECKED_LANE@', checked_lane)
         road_boundary = between(obstacle, 'void getObstacleRoadSidePosition(', 'bool isObstacleAmongCrosswalk(')
         boundary_harness = boundary_harness.replace('// @ROAD_BOUNDARY@', road_boundary)
         (output / 'boundary.cpp').write_bytes(boundary_harness.replace('// @BOUNDARY@', boundary).encode('utf-8'))
         corners = between(obstacle, 'SSD::SimPoint3D calculateObstacleTL(', 'void groupObstacleByDist(')
         merge = between(obstacle, '        std::vector<SSD::SimPoint3D> tlList, brList;',
+                        '        laneID = getObstacleLaneChecked(pt);' if checked_lane else
                         '        laneID = m_SampleGetNearMostLane(pt);')
         geometry = corners + '\nstruct Merge : Box {\nBox run(const std::vector<size_t>& index) {\n'
         geometry += merge + '\nreturn *this;\n}\n};\n'
@@ -301,7 +305,8 @@ def main():
         compile_run(output, ['boundary.cpp'], ['valid','empty_lane','failed_partial','left_empty',
                     'right_empty','nan','inf','all_nan','point_nan',
                     'road_valid','road_single','road_aligned','road_empty_lane','road_failed_partial','road_right_failed',
-                    'road_left_empty','road_right_empty','road_nan','road_point_nan','road_link_failed','road_cycle'], 'obstacle_boundary')
+                    'road_left_empty','road_right_empty','road_nan','road_point_nan','road_link_failed','road_cycle',
+                    'near_failed_written','near_failed_empty','road_near_failed_written','road_near_failed_empty'], 'obstacle_boundary')
         compile_run(output, ['gps_gate.cpp'], ['initial_failure', 'late_failure', 'transient_failure',
                                               'success', 'recovery'], 'gps_gate')
         compile_run(output, ['navigation.cpp'], ['waypoint_failure', 'zero_waypoints', 'route_failure',

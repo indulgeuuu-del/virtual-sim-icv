@@ -210,13 +210,25 @@ void groupObstacleByS(const std::vector<Obstacle>& obstacleList, const std::vect
     }
 }
 
+static SSD::SimString getObstacleLaneChecked(const SSD::SimPoint3D& point)
+{
+    if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z))
+        throw std::domain_error("Obstacle lane query point is invalid");
+    SSD::SimString lane;
+    double s, t, sCenter, tCenter;
+    // 这里只使用车道编号；接口失败后即使写入非空编号也不能采信。
+    if (!SimOneAPI::GetNearMostLane(point, lane, s, t, sCenter, tCenter) || lane.Empty())
+        throw std::domain_error("Obstacle nearest lane query failed");
+    return lane;
+}
+
 void getObstacleLaneSidePosition(const SSD::SimPoint3D& point, SSD::SimPoint3D& leftPoint, SSD::SimPoint3D& rightPoint)
 {
     const auto finitePoint = [](const SSD::SimPoint3D& p) {
         return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z);
     };
     if (!finitePoint(point)) throw std::domain_error("Obstacle boundary query point is invalid");
-    SSD::SimString obstacleLaneId = m_SampleGetNearMostLane(point);
+    SSD::SimString obstacleLaneId = getObstacleLaneChecked(point);
     HDMapStandalone::MLaneInfo obstacleLaneInfo;
     if (obstacleLaneId.Empty() || !SimOneAPI::GetLaneSample(obstacleLaneId, obstacleLaneInfo))
         throw std::domain_error("Obstacle lane boundaries unavailable");
@@ -249,7 +261,7 @@ void getObstacleRoadSidePosition(const SSD::SimPoint3D& point, SSD::SimPoint3D& 
         return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z);
     };
     if (!finitePoint(point)) throw std::domain_error("Obstacle road boundary query point is invalid");
-    const SSD::SimString obstacleLaneId = m_SampleGetNearMostLane(point);
+    const SSD::SimString obstacleLaneId = getObstacleLaneChecked(point);
     if (obstacleLaneId.Empty()) throw std::domain_error("Obstacle road lane is unavailable");
 
     const auto findExtremeLane = [&](bool findLeft) {
@@ -323,7 +335,7 @@ Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle) :
 	pt = SSD::SimPoint3D(obstacle.posX, obstacle.posY, obstacle.posZ);
     calculateObstacleCorners(obstacle, tl, tr, bl, br);
 
-	laneID = m_SampleGetNearMostLane(pt);
+	laneID = getObstacleLaneChecked(pt);
     laneAzimuth = getLaneAzimuth(laneID);
 	isSameLaneWithMainVehicle = (laneID == mainVehicle.laneID);
 	isSameRoadWithMainVehicle = isSameRoadId(laneID, mainVehicle.laneID);
@@ -486,7 +498,7 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
         /*float azimuth = mainVehicle.laneAzimuth;*/
         SimOne_Data_Obstacle_Entry& getAzimuthObstacle = pObstacle->obstacle[index.at(0)];
         SSD::SimPoint3D getAzimuthPos = SSD::SimPoint3D(getAzimuthObstacle.posX, getAzimuthObstacle.posY, getAzimuthObstacle.posZ);
-        float azimuth = getLaneAzimuth(m_SampleGetNearMostLane(getAzimuthPos));
+        float azimuth = getLaneAzimuth(getObstacleLaneChecked(getAzimuthPos));
         findBoundingBox(tlList, brList, minTL, maxBR, azimuth); // 将不同障碍物的 bounding box 合成一个
 
         tl = minTL;
@@ -524,7 +536,7 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
         pt = SSD::SimPoint3D(0.5f * (tl.x + br.x), 0.5f * (tl.y + br.y), tl.z);
         velocity = velocityPlanar = vx = vy = vz = yaw = 0.0f;
 
-        laneID = m_SampleGetNearMostLane(pt);
+        laneID = getObstacleLaneChecked(pt);
         laneAzimuth = getLaneAzimuth(laneID);
         isSameLaneWithMainVehicle = (laneID == mainVehicle.laneID);
         isSameRoadWithMainVehicle = isSameRoadId(laneID, mainVehicle.laneID);

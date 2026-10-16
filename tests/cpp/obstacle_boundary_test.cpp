@@ -20,8 +20,12 @@ struct MLaneLink { SSD::SimString leftNeighborLaneName{""},rightNeighborLaneName
 }
 std::string scenario;
 bool road=false;
-SSD::SimString m_SampleGetNearMostLane(const SSD::SimPoint3D&) { return scenario=="empty_lane" ? "" : "lane"; }
 namespace SimOneAPI {
+bool GetNearMostLane(const SSD::SimPoint3D&,SSD::SimString& lane,double& s,double& t,double& sc,double& tc) {
+    lane=scenario=="empty_lane" || scenario=="near_failed_empty" ? "" : "lane";
+    s=t=sc=tc=0;
+    return scenario!="near_failed_written" && scenario!="near_failed_empty";
+}
 bool GetLaneSample(const SSD::SimString& lane,HDMapStandalone::MLaneInfo& info) {
     if(road) {
         info.centerLine={{10,0,0},{0,0,0}};
@@ -49,7 +53,12 @@ bool GetLaneLink(const SSD::SimString& lane,HDMapStandalone::MLaneLink& link) {
     return scenario!="link_failed";
 }
 }
+SSD::SimString m_SampleGetNearMostLane(const SSD::SimPoint3D& point) {
+    SSD::SimString lane; double s,t,sc,tc;
+    SimOneAPI::GetNearMostLane(point,lane,s,t,sc,tc); return lane;
+}
 namespace UtilMath { double planarDistance(const SSD::SimPoint3D& a,const SSD::SimPoint3D& b) { return std::hypot(a.x-b.x,a.y-b.y); } }
+// @CHECKED_LANE@
 // @BOUNDARY@
 // @ROAD_BOUNDARY@
 int main(int argc,char** argv) {

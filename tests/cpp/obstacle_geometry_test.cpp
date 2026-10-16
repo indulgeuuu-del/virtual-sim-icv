@@ -26,6 +26,8 @@ struct Box {
     double width = 0, length = 0, velocity = 0, velocityPlanar = 0;
     double vx = 0, vy = 0, vz = 0, yaw = 0;
 };
+// Geometry-only fixture: map validity is exercised in obstacle_boundary_test.cpp.
+#define getObstacleLaneChecked m_SampleGetNearMostLane
 // @PRODUCTION_GEOMETRY@
 void require(bool value, const char* text) {
     if (!value) throw std::runtime_error(text);
