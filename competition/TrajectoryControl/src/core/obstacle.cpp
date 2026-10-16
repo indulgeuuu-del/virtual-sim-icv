@@ -331,7 +331,16 @@ Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle) :
 {
 	velocity = UtilMath::calculateSpeed(vx, vy, vz);
 	velocityPlanar = UtilMath::calculateSpeed(vx, vy);
+    // 保留继承算法的10点输入；只检查实际使用的平面坐标。
+    for (int i = 0; i < 10; ++i) {
+        if (!std::isfinite(obstacle.prediction.trajectory[i].x) || !std::isfinite(obstacle.prediction.trajectory[i].y))
+            throw std::domain_error("Obstacle prediction input is invalid");
+    }
     predictTrajectory(obstacle.prediction.trajectory, 10, 50, predictionGM);
+    for (const auto& predicted : predictionGM) {
+        if (!std::isfinite(predicted.x) || !std::isfinite(predicted.y))
+            throw std::domain_error("Obstacle prediction output is invalid");
+    }
 	pt = SSD::SimPoint3D(obstacle.posX, obstacle.posY, obstacle.posZ);
     calculateObstacleCorners(obstacle, tl, tr, bl, br);
 

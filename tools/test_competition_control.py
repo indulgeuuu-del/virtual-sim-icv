@@ -88,6 +88,7 @@ def main():
         'util/UtilDriver.h', 'util/UtilMath.h',
         'TrajectoryControl/src/main.cpp', 'TrajectoryControl/src/main_follow.cpp',
         'TrajectoryControl/src/main_track.cpp',
+        'TrajectoryControl/src/core/obstacle.h', 'TrajectoryControl/src/tools/prediction.cpp',
     )
     report = {'sdk_build_verified': False, 'platform_run_verified': False,
               'official_score_verified': False,
@@ -125,6 +126,7 @@ def main():
             root / 'tests/cpp/traffic_light_test.cpp',
             root / 'tests/cpp/obstacle_boundary_test.cpp',
             root / 'tests/cpp/road_width_test.cpp',
+            root / 'tests/cpp/obstacle_constructor_test.cpp',
             root / 'tests/cpp/track_speed_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
@@ -157,6 +159,20 @@ def main():
         road_boundary = between(obstacle, 'void getObstacleRoadSidePosition(', 'bool isObstacleAmongCrosswalk(')
         boundary_harness = boundary_harness.replace('// @ROAD_BOUNDARY@', road_boundary)
         (output / 'boundary.cpp').write_bytes(boundary_harness.replace('// @BOUNDARY@', boundary).encode('utf-8'))
+        constructor_fixture = read_source(root / 'tests/cpp/obstacle_constructor_test.cpp')
+        replacements_ctor = {
+            '// @CLASS@': between(sources['TrajectoryControl/src/core/obstacle.h'], 'class Obstacle {', 'extern SSD::SimPoint3D calculateObstacleTL('),
+            '// @CORNERS@': between(obstacle, 'SSD::SimPoint3D calculateObstacleTL(', 'void groupObstacleByDist('),
+            '// @PROCESS@': between(sources['TrajectoryControl/src/core/process.cpp'], 'double getRoadWidth(', 'bool getValidTrafficLight('),
+            '// @AZIMUTH@': between(sources['TrajectoryControl/src/core/process.h'], 'inline float calculateResultantAzimuth(', '/**'),
+            '// @SPEED@': between(sources['util/UtilMath.h'], 'static double calculateSpeed(const double velX, const double velY, const double velZ)', '\n\t//'),
+            '// @PREDICTION@': sources['TrajectoryControl/src/tools/prediction.cpp'].split('#include "logger.hpp"', 1)[1],
+            '// @CONSTRUCTOR@': between(obstacle, 'Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle)', '// 通过索引来构造'),
+        }
+        for marker, code in replacements_ctor.items():
+            constructor_fixture = constructor_fixture.replace(marker, code)
+        preamble = boundary_harness.replace('// @BOUNDARY@', boundary).split('int main(', 1)[0]
+        (output / 'constructor.cpp').write_bytes((preamble + constructor_fixture).encode('utf-8'))
         corners = between(obstacle, 'SSD::SimPoint3D calculateObstacleTL(', 'void groupObstacleByDist(')
         merge = between(obstacle, '        std::vector<SSD::SimPoint3D> tlList, brList;',
                         '        laneID = getObstacleLaneChecked(pt);' if checked_lane else
@@ -319,6 +335,9 @@ def main():
                     'passed': result.returncode == 0, 'output': (result.stdout + result.stderr).strip()}
 
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
+        compile_run(output, ['constructor.cpp'], ['valid','static','vertical','near_failed_written','heading_failed',
+                    'projection_failed','road_projection_failed','width_failed','failed_partial','link_failed',
+                    'left_empty','right_empty','prediction_nan','prediction_inf','prediction_growth'], 'obstacle_constructor')
         compile_run(output, ['road_width.cpp'],
                     [f'{kind}_{mode}' for kind in ('road','raw','group') for mode in
                      ('valid','single','failed','partial','unwritten','nan','inf','negative','zero','link_failed')]
