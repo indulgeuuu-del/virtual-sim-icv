@@ -131,6 +131,7 @@ def main():
             root / 'tests/cpp/constructed_follow_test.cpp',
             root / 'tests/cpp/grouped_constructor_test.cpp',
             root / 'tests/cpp/stopline_projection_test.cpp',
+            root / 'tests/cpp/stopline_drive_test.cpp',
             root / 'tests/cpp/track_speed_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
@@ -304,6 +305,23 @@ def main():
                 raise ValueError('missing speed arbitration insertion point')
             speed_support = speed_support.replace(marker, code)
         (drive_dir / 'track_speed.cpp').write_bytes(speed_support.encode('utf-8'))
+        stop_drive = stop_fixture.split('int main(', 1)[0]
+        stop_drive = stop_drive.replace(
+            'double StopLine::calculateVehicleDistance(const SSD::SimPoint3D&) const { return 20; }',
+            between(stopline, 'double StopLine::calculateVehicleDistance(', 'bool StopLine::isStopLineBehindVehicle('))
+        stop_drive_body = read_source(root / 'tests/cpp/stopline_drive_test.cpp')
+        stop_drive_parts = {
+            '// @CONTROLLER@': support,
+            '// @DEFAULT_AND_NEAREST@': between(stopline, 'bool calculateNearestStopLine(',
+                                               'StopLine::StopLine(const HDMapStandalone::MSignal& light)'),
+            '// @DRIVE@': drive.replace('MainVehicle::drive', 'Vehicle::drive', 1),
+            '// @ARBITRATION@': speed_support.replace('#include "main.h"', ''),
+            '// @BRAKING@': between(track,
+                'if (potentialStopLine.type == StopLine::Type::Whole &&', '/* 半停止线，主车的策略是变道 */'),
+        }
+        for marker, code in stop_drive_parts.items():
+            stop_drive_body = stop_drive_body.replace(marker, code)
+        (output / 'stopline_drive.cpp').write_bytes((stop_drive + stop_drive_body).encode('utf-8'))
 
         follow_dir = output / 'follow_input'
         follow_dir.mkdir(exist_ok=True)
@@ -375,6 +393,9 @@ def main():
                     'passed': result.returncode == 0, 'output': (result.stdout + result.stderr).strip()}
 
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
+        compile_run(output, ['stopline_drive.cpp'], ['near','far','ignored']
+                    + [f'{kind}_{mode}' for kind in ('light','crosswalk','projection')
+                       for mode in ('forward','reverse','slide','both')], 'stopline_drive')
         compile_run(output, ['stopline_projection.cpp'], ['valid','outside','reversed']
                     + [f'{fault}_{call}' for fault in ('unwritten','written','nan_s','nan_t','inf_z')
                        for call in range(3)]

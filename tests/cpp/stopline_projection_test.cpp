@@ -23,7 +23,17 @@ struct Obstacle {
     int laneID=1;
     SSD::SimPoint3D leftLanePt{20,2,0},rightLanePt{20,-2,0},leftRoadPt{20,4,0},rightRoadPt{20,-4,0},tl,br;
 };
-struct Vehicle { int laneID=1; bool leftLaneExist=true,rightLaneExist=false; SSD::SimPoint3D pt; } mainVehicle;
+struct StopTestNeighborhood {
+    float vf=0,vb=0,vl=0,vr=0,vlf=0,vrf=0,vlb=0,vrb=0;
+    bool bf=false,bb=false,bl=false,br=false,blf=false,brf=false,blb=false,brb=false;
+};
+struct Vehicle {
+    int laneID=1; bool leftLaneExist=true,rightLaneExist=false; SSD::SimPoint3D pt;
+    const char* id="0"; float speed=3,steeringOffset=0;
+    bool reverse=false,useDefaultPath=true;
+    StopTestNeighborhood neighborhood;
+    void drive();
+} mainVehicle;
 std::ostringstream logText;
 #define LOG logText
 #define IS_SINGLE_STOPLINE(o) true
@@ -31,6 +41,7 @@ std::ostringstream logText;
 int calls=0,badCall=-1;
 std::string fault;
 double leftT=2,rightT=-2;
+double stopLineX=20;
 namespace SimOneAPI {
 bool GetRoadST(int,const SSD::SimPoint3D&,double& s,double& t,double& z) {
     int n=calls++;
@@ -46,7 +57,7 @@ bool GetRoadST(int,const SSD::SimPoint3D&,double& s,double& t,double& z) {
 }
 void fillLines(SSD::SimVector<HDMapStandalone::MObject>& lines) {
     if(fault=="empty") return;
-    HDMapStandalone::MObject line;line.boundaryKnots={{20,2,0},{20,-2,0}};
+    HDMapStandalone::MObject line;line.boundaryKnots={{stopLineX,2,0},{stopLineX,-2,0}};
     if(fault=="knots0") line.boundaryKnots.clear();
     if(fault=="knots1") line.boundaryKnots.resize(1);
     if(fault=="nan") line.boundaryKnots[0].x=std::nan("");
