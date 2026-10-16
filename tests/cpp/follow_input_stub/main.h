@@ -78,6 +78,7 @@ struct Timer { void tic() {} double get() const { return 0.1; } };
 inline Timer timer;
 inline float calculateFps(int,double) { return 10; }
 struct Input { bool gps=true, obstacle=true, send=true; int count=1; bool route=true;
+    int obstacleHeading=0; // 1 API failure, 2 zero, 3 NaN, 4 infinity, 5 empty lane
     int rawField=0, rawIndex=0; float rawValue=100;
     bool near=true, projection=true, emptyLane=false, finiteProjection=true, finitePosition=true;
     bool heading=true,finiteHeading=true,zeroHeading=false,link=true,clearLink=false;
@@ -121,7 +122,14 @@ inline bool GetLaneST(const SSD::SimString&,const SSD::SimPoint3D&,double& s,dou
     t=current().finiteProjection ? 0 : std::nan("");
     return current().projection;
 }
-inline bool GetInertialFromLaneST(const SSD::SimString&,double,double,SSD::SimPoint3D& pt,SSD::SimPoint3D& dir) {
+inline bool GetInertialFromLaneST(const SSD::SimString& lane,double,double,SSD::SimPoint3D& pt,SSD::SimPoint3D& dir) {
+    if(std::strcmp(lane.GetString(),"obstacle")==0 || lane.Empty()) {
+        pt={0,0,0}; dir={1,0,0};
+        if(current().obstacleHeading==2) dir={0,0,0};
+        if(current().obstacleHeading==3) dir.y=std::nan("");
+        if(current().obstacleHeading==4) dir.z=std::numeric_limits<double>::infinity();
+        return current().obstacleHeading!=1;
+    }
     pt={0,0,0}; dir={current().zeroHeading ? 0.0 : 1.0,0,0};
     if(!current().finiteHeading) dir.y=std::nan("");
     return current().heading;
@@ -195,8 +203,16 @@ struct Obstacle {
     float velocity=3;
     bool isSameLaneWithMainVehicle=true, isSameRoadWithMainVehicle=true;
     Obstacle() = default;
-    explicit Obstacle(const RawObstacle& raw): sRelativeToVehicle(raw.s) {}
+    explicit Obstacle(const RawObstacle& raw): sRelativeToVehicle(raw.s) {
+        // Exercise the real helper; full map-dependent construction remains outside this fixture.
+        getLaneAzimuth(inputs.at(waits-1).obstacleHeading==5 ? "" : "obstacle");
+    }
+    explicit Obstacle(const std::vector<size_t>& indices): Obstacle(pObstacle->obstacle[indices.at(0)]) {}
 };
+inline float groupingDistThres=3;
+inline void groupObstacleByDist(const std::vector<size_t>& indices,float,std::vector<std::vector<size_t>>& groups) {
+    for(auto i:indices) groups.push_back({i});
+}
 inline std::vector<Obstacle> obstacleList;
 inline int navigationCalls=0;
 inline bool initNavigation(std::vector<int>&,std::vector<int>& path) {

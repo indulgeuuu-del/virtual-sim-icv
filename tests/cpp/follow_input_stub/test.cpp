@@ -5,7 +5,21 @@ int main(int argc,char** argv) {
         require(argc==2,"test name required");
         const std::string name=argv[1];
         inputs={{},{},{}};
-        if(name.rfind("raw_",0)==0) {
+        if(name.rfind("obstacle_heading_",0)==0) {
+            if(name=="obstacle_heading_failed") inputs[1].obstacleHeading=1;
+            else if(name=="obstacle_heading_zero") inputs[1].obstacleHeading=2;
+            else if(name=="obstacle_heading_nan") inputs[1].obstacleHeading=3;
+            else if(name=="obstacle_heading_inf") inputs[1].obstacleHeading=4;
+            else if(name=="obstacle_heading_empty") inputs[1].obstacleHeading=5;
+            else if(name=="obstacle_heading_initial") inputs[0].obstacleHeading=1;
+            else if(name=="obstacle_heading_repeated") { inputs[0].obstacleHeading=1; inputs[1].obstacleHeading=1; }
+            else if(name=="obstacle_heading_static") { inputs[1].obstacleHeading=1; inputs[1].rawField=3; inputs[1].rawValue=0; }
+            else if(name=="obstacle_heading_reverse") { inputs[1].obstacleHeading=1; mainVehicle.reverse=true; }
+            else if(name=="obstacle_heading_send_failure") { inputs[1].obstacleHeading=1; inputs[1].send=false; }
+            else if(name=="obstacle_heading_pid") { inputs[1].obstacleHeading=1; followingKi=0.1f; }
+            else throw std::runtime_error("unknown heading test");
+        }
+        else if(name.rfind("raw_",0)==0) {
             const float nan=std::numeric_limits<float>::quiet_NaN();
             if(name=="raw_initial") { inputs[0].rawValue=nan; }
             else if(name=="raw_repeated") { inputs[0].rawValue=nan; inputs[1].rawValue=nan; }
@@ -94,7 +108,7 @@ int main(int argc,char** argv) {
         for(size_t i=0;i<inputs.size();++i) {
             const auto& input=inputs[i];
             const bool rawValid=input.rawIndex>=input.count || std::isfinite(input.rawValue);
-            if(input.gps && input.obstacle && input.count>=0 && input.count<=2 && rawValid && input.route && mapValid(input)) {
+            if(input.gps && input.obstacle && input.count>=0 && input.count<=2 && rawValid && input.route && mapValid(input) && input.obstacleHeading==0) {
                 ++expectedDrives;
                 require(sends[i].throttle>0,"fresh input failed to resume");
             } else {
@@ -123,6 +137,8 @@ int main(int argc,char** argv) {
         require(obstacleReads==3 && gpsReads==3,"one stream skipped after other failure");
         if(name!="empty_valid") require(!globalLogger.text.empty(),"failure has no diagnostic");
         if(name=="send_failure") require(globalLogger.text.find("SetDrive")!=std::string::npos,"stop send failure not diagnosed");
+        if(name=="obstacle_heading_send_failure") require(globalLogger.text.find("SetDrive")!=std::string::npos,"map failure stop send failure not diagnosed");
+        if(name=="obstacle_heading_pid") require(sends[0].throttle==sends[2].throttle,"PID history retained across obstacle map failure");
         if(name=="pid_recovery") require(sends[0].throttle==sends[2].throttle,"PID history retained across invalid input");
         if(name=="route_initial") require(navigationCalls==2,"route not retried or rebuilt after success");
         if(name=="route_repeated") require(navigationCalls==3,"route retries did not continue");

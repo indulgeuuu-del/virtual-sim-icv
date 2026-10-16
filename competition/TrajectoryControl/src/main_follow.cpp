@@ -1,5 +1,7 @@
 ﻿#include "main.h"
 
+#include <stdexcept>
+
 int main_follow(void)
 {
 	bool navigationReady = false;
@@ -41,9 +43,24 @@ int main_follow(void)
 		steerKdUse = steerKd;
 		obstacleList.clear();
 
-		for (size_t i = 0, ie = pObstacle->obstacleSize; i < ie; ++i)
-		{
-			obstacleList.push_back(Obstacle(pObstacle->obstacle[i]));
+		try {
+			for (size_t i = 0, ie = pObstacle->obstacleSize; i < ie; ++i) {
+				obstacleList.push_back(Obstacle(pObstacle->obstacle[i]));
+			}
+		}
+		catch (const std::domain_error& error) {
+			obstacleList.clear();
+			adaptiveFollowing.reset();
+			pControl->throttle = 0;
+			pControl->steering = 0;
+			pControl->gear = mainVehicle.reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
+				: ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
+			pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
+			if (!SimOneAPI::SetDrive(mainVehicle.id, pControl.get()))
+				LOG << "SetDrive failed while requesting safe stop";
+			LOG << error.what();
+			SimOneAPI::NextFrame(frame);
+			continue;
 		}
 
 		pControl->throttle = caculateFollowingSpeed(obstacleList, caseIdx);

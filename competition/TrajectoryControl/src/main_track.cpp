@@ -1,5 +1,7 @@
 ﻿#include "main.h"
 
+#include <stdexcept>
+
 int main_track(void)
 {
 	timer.tic(); // 开始计时
@@ -58,30 +60,46 @@ int main_track(void)
 		std::vector<std::vector<size_t>> obstacleIDGroup; // 将距离过近的静止障碍物分组合成以后的障碍物 ID 列表
 		std::vector<std::vector<size_t>> obstacleSGroup; // 将 S 坐标相近的所有障碍物分组合成以后的障碍物 ID 列表
 
-		for (size_t i = 0, ie = pObstacle->obstacleSize; i < ie; ++i)
-		{
-			if (UtilMath::calculateSpeed(pObstacle->obstacle[i].velX, pObstacle->obstacle[i].velY) < 1e-2) // 若障碍物静止
+		try {
+			for (size_t i = 0, ie = pObstacle->obstacleSize; i < ie; ++i)
 			{
-				staticObstacleIndex.push_back(i);
-				continue;
+				if (UtilMath::calculateSpeed(pObstacle->obstacle[i].velX, pObstacle->obstacle[i].velY) < 1e-2) // 若障碍物静止
+				{
+					staticObstacleIndex.push_back(i);
+					continue;
+				}
+
+				obstacleList.push_back(Obstacle(pObstacle->obstacle[i])); // 如果障碍物不是静止的，就直接填充进 Obstacle 类
 			}
 
-			obstacleList.push_back(Obstacle(pObstacle->obstacle[i])); // 如果障碍物不是静止的，就直接填充进 Obstacle 类
-		}
-
-		groupObstacleByDist(staticObstacleIndex, groupingDistThres, obstacleIDGroup); // 合成障碍（同类型的静止障碍）
-		LOG << "dist分组情况";
-		for (size_t i = 0; i < obstacleIDGroup.size(); ++i) {
-			std::cout << "组 " << i << "：";
-			for (size_t idx : obstacleIDGroup[i]) {
-				std::cout << idx << " ";
+			groupObstacleByDist(staticObstacleIndex, groupingDistThres, obstacleIDGroup); // 合成障碍（同类型的静止障碍）
+			LOG << "dist分组情况";
+			for (size_t i = 0; i < obstacleIDGroup.size(); ++i) {
+				std::cout << "组 " << i << "：";
+				for (size_t idx : obstacleIDGroup[i]) {
+					std::cout << idx << " ";
+				}
+				std::cout << std::endl;
 			}
-			std::cout << std::endl;
-		}
 
-		for (size_t i = 0, ie = obstacleIDGroup.size(); i < ie; ++i)
-		{
-			obstacleList.push_back(Obstacle(obstacleIDGroup[i])); // 将分好组的静止障碍物填充进 Obstacle 类
+			for (size_t i = 0, ie = obstacleIDGroup.size(); i < ie; ++i)
+			{
+				obstacleList.push_back(Obstacle(obstacleIDGroup[i])); // 将分好组的静止障碍物填充进 Obstacle 类
+			}
+		}
+		catch (const std::domain_error& error) {
+			obstacleList.clear();
+			stopLineList.clear();
+			pControl->throttle = 0;
+			pControl->steering = 0;
+			pControl->gear = mainVehicle.reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
+				: ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
+			pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
+			if (!SimOneAPI::SetDrive(mainVehicle.id, pControl.get()))
+				LOG << "SetDrive failed while requesting safe stop";
+			LOG << error.what();
+			SimOneAPI::NextFrame(frame);
+			continue;
 		}
 
 		float groupingSThres = 1.0f;

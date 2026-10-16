@@ -1,5 +1,6 @@
 ﻿#include <set>
 #include <memory>
+#include <stdexcept>
 #include "SimOneServiceAPI.h"
 #include "SimOneSensorAPI.h"
 #include "vehicle.h"
@@ -51,7 +52,12 @@ double getRoadWidth(const SSD::SimString& laneId, const SSD::SimPoint3D& pos)
 float getLaneAzimuth(const SSD::SimString& laneId)
 {
 	SSD::SimPoint3D pt, dir;
-	SimOneAPI::GetInertialFromLaneST(laneId, 0.0, 0.0, pt, dir);
+	if (laneId.Empty() || !SimOneAPI::GetInertialFromLaneST(laneId, 0.0, 0.0, pt, dir)
+		|| !std::isfinite(dir.x) || !std::isfinite(dir.y) || !std::isfinite(dir.z)
+		|| (dir.x == 0.0 && dir.y == 0.0)) {
+		// 构造障碍物时终止本帧计算，由驾驶循环捕获并请求停车。
+		throw std::domain_error("Obstacle lane direction unavailable");
+	}
 	float azimuth = std::atan2(dir.y, dir.x) * 57.29578f;
 	return azimuth < 0.0f ? azimuth + 360.0f : azimuth;
 }

@@ -24,6 +24,9 @@ RAW_OBSTACLE_TESTS = [
     for kind in ('nan', 'inf', 'neginf')
 ] + ['raw_initial', 'raw_repeated', 'raw_second', 'raw_unused', 'raw_signed']
 
+OBSTACLE_HEADING_TESTS = ['obstacle_heading_' + kind for kind in
+    ('failed', 'zero', 'nan', 'inf', 'empty', 'initial', 'repeated', 'static', 'reverse', 'send_failure', 'pid')]
+
 LOOP_TESTS = (
     'empty', 'defaults', 'explicit', 'interpolation', 'transition',
     'transition_parameters', 'first_route_failure', 'interpolation_failure',
@@ -234,13 +237,15 @@ def main():
         follow_support += 'bool updateObstacleData(' + fetch + '\n'
         follow_support += replacements['// @PRODUCTION_NEAREST@'] + replacements['// @PRODUCTION_FOLLOWING@']
         (follow_dir / 'support.cpp').write_bytes(follow_support.encode('utf-8'))
-        # Execute the real track loop through its fresh-input gate. The much
-        # larger downstream planner is deliberately represented by drive().
+        # Execute the real track input gate and obstacle-construction loops.
+        # Obstacle internals/grouping remain fixtures; downstream planning is drive().
         track_prefix = sources['TrajectoryControl/src/main_track.cpp'].split(
             '\t\tFlagType::isCrosswalkExist = getCrossWalk();', 1)
         if len(track_prefix) != 2:
             raise ValueError('missing track input boundary')
+        construction = between(track, '\t\tstd::vector<size_t> staticObstacleIndex;', '\t\tfloat groupingSThres')
         (follow_dir / 'track_prefix.cpp').write_bytes((track_prefix[0] +
+            '\n obstacleList.clear(); stopLineList.clear();\n' + construction +
             '\n mainVehicle.drive(); SimOneAPI::NextFrame(frame);\n}\nreturn 0;\n}\n').encode('utf-8'))
 
         if os.name != 'nt':
@@ -296,7 +301,7 @@ def main():
                      'map_initial','map_repeated','heading_failed','heading_nonfinite','heading_zero',
                      'link_partial','link_cleared','link_initial','link_repeated','road_invalid','road_overflow',
                      'successor_ambiguous','link_empty_valid','junction_valid',
-                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'] + RAW_OBSTACLE_TESTS, 'follow_input')
+                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'] + RAW_OBSTACLE_TESTS + OBSTACLE_HEADING_TESTS, 'follow_input')
         compile_run(follow_dir, ['track_prefix.cpp', 'support.cpp', 'test.cpp'],
                     ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
                      'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
@@ -305,7 +310,7 @@ def main():
                      'map_initial','map_repeated','heading_failed','heading_nonfinite','heading_zero',
                      'link_partial','link_cleared','link_initial','link_repeated','road_invalid','road_overflow',
                      'successor_ambiguous','link_empty_valid','junction_valid',
-                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'] + RAW_OBSTACLE_TESTS, 'track_input', ['/DTEST_TRACK_PREFIX'])
+                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'] + RAW_OBSTACLE_TESTS + OBSTACLE_HEADING_TESTS, 'track_input', ['/DTEST_TRACK_PREFIX'])
         report['passed'] = bool(report['tests']) and all(t['passed'] for t in report['tests'].values())
     except (OSError, ValueError, IndexError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
         report['error'] = f'{type(error).__name__}: {error}'
