@@ -1,6 +1,7 @@
 // The runner prepends the boundary SDK fixture and real boundary functions.
 #include <memory>
 #include <algorithm>
+#include <sstream>
 bool operator==(const SSD::SimString& a,const SSD::SimString& b) { return a.s==b.s; }
 struct SimOne_Data_Vec3f { float x=0,y=0,z=0; };
 struct Prediction { SimOne_Data_Vec3f trajectory[10]; };
@@ -10,16 +11,21 @@ struct SimOne_Data_Obstacle_Entry {
 };
 struct GroundTruth { int obstacleSize=2; SimOne_Data_Obstacle_Entry obstacle[2]; };
 auto pObstacle=std::make_unique<GroundTruth>();
-struct { float laneAzimuth=0; double s=0; SSD::SimPoint3D pt; SSD::SimString laneID{"lane"}; } mainVehicle;
+struct MainVehicleFixture {
+    float laneAzimuth=0,speed=3; double s=0; SSD::SimPoint3D pt; SSD::SimString laneID{"lane"};
+    const char* id="0"; bool reverse=false;
+    bool update() { return true; } // Main-vehicle update is covered by the separate input suite.
+    void drive();
+} mainVehicle;
 namespace FlagType { bool isCrosswalkExist=false; }
-struct SilentLog { template<class T> SilentLog& operator<<(const T&) { return *this; } } silentLog;
+struct SilentLog { std::ostringstream text; template<class T> SilentLog& operator<<(const T& v) { text<<v; return *this; } } silentLog;
 #define LOG silentLog
 namespace SimOneAPI {
 bool GetInertialFromLaneST(const SSD::SimString&,double,double,SSD::SimPoint3D& p,SSD::SimPoint3D& dir) {
     p={}; dir={1,0,0}; return scenario!="heading_failed";
 }
-bool GetLaneST(const SSD::SimString&,const SSD::SimPoint3D&,double& s,double& t) {
-    s=0;t=0;return scenario!="projection_failed";
+bool GetLaneST(const SSD::SimString&,const SSD::SimPoint3D& p,double& s,double& t) {
+    s=p.x;t=0;return scenario!="projection_failed";
 }
 bool GetRoadST(const SSD::SimString&,const SSD::SimPoint3D&,double& s,double& t,double& z) {
     s=t=z=0;return scenario!="road_projection_failed";

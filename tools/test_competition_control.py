@@ -127,6 +127,7 @@ def main():
             root / 'tests/cpp/obstacle_boundary_test.cpp',
             root / 'tests/cpp/road_width_test.cpp',
             root / 'tests/cpp/obstacle_constructor_test.cpp',
+            root / 'tests/cpp/constructed_follow_test.cpp',
             root / 'tests/cpp/track_speed_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
@@ -174,6 +175,18 @@ def main():
             constructor_fixture = constructor_fixture.replace(marker, code)
         preamble = boundary_harness.replace('// @BOUNDARY@', boundary).split('int main(', 1)[0]
         (output / 'constructor.cpp').write_bytes((preamble + constructor_fixture).encode('utf-8'))
+        constructed_follow = read_source(root / 'tests/cpp/constructed_follow_test.cpp')
+        integration_parts = {
+            '// @CONTROLLER@': sources['TrajectoryControl/src/tools/controller.hpp'],
+            '// @FETCH@': 'bool updateObstacleData(' + sources['TrajectoryControl/src/main.cpp'].split('bool updateObstacleData(', 1)[1],
+            '// @NEAREST@': between(obstacle, 'bool calculateNearestObstacle(', '// 找到所有在主车后方'),
+            '// @FOLLOWING@': between(obstacle, 'static float calculateFollowingSpeedImpl(', '// 计算超车速度'),
+            '// @LOOP@': sources['TrajectoryControl/src/main_follow.cpp'].replace('#include "main.h"', ''),
+        }
+        for marker, code in integration_parts.items():
+            constructed_follow = constructed_follow.replace(marker, code)
+        (output / 'constructed_follow.cpp').write_bytes((preamble + constructor_fixture.split('int main(', 1)[0]
+            + constructed_follow).encode('utf-8'))
         corners = between(obstacle, 'SSD::SimPoint3D calculateObstacleTL(', 'void groupObstacleByDist(')
         merge = between(obstacle, '        std::vector<SSD::SimPoint3D> tlList, brList;',
                         '        laneID = getObstacleLaneChecked(pt);' if checked_lane else
@@ -336,6 +349,9 @@ def main():
                     'passed': result.returncode == 0, 'output': (result.stdout + result.stderr).strip()}
 
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
+        compile_run(output, ['constructed_follow.cpp'], ['valid','prediction_nan','prediction_inf','prediction_growth',
+                    'near_failed_written','heading_failed','projection_failed','road_projection_failed','width_failed',
+                    'failed_partial','link_failed','left_empty','right_empty','initial','repeated','reverse','send_failure'], 'constructed_follow')
         compile_run(output, ['constructor.cpp'], ['valid','static','vertical','near_failed_written','heading_failed',
                     'projection_failed','road_projection_failed','width_failed','failed_partial','link_failed',
                     'left_empty','right_empty','prediction_nan','prediction_inf','prediction_growth',
