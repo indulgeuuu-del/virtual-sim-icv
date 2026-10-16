@@ -137,6 +137,8 @@ def parse_args():
     parser.add_argument('--exclusive-dwell', action='store_true', help='Require strictly more than dwell-seconds')
     parser.add_argument('--fixed-delta-seconds', type=float, default=0.05, help='Simulation step, 0.02..0.1 seconds')
     parser.add_argument('--no-realtime', action='store_true', help='Run without wall-clock pacing')
+    parser.add_argument('--gear-mode', choices=('automatic', 'forward'), default='automatic',
+                        help='CARLA actuator comparison only: automatic gearbox or fixed forward gear 1')
     parser.add_argument('--road-id', type=int, help='Pin a Town01 road; must be paired with --lane-id')
     parser.add_argument('--lane-id', type=int, help='Pin a lane on --road-id; no fallback to another road')
     parser.add_argument('--spawn-index', type=int, help='Pin a Town01 spawn point index; no fallback')
@@ -310,20 +312,28 @@ def run(args):
             break
         if ego is None or lead is None:
             raise RuntimeError('No unoccupied straight lane long enough for the requested gap')
+        physics = ego.get_physics_control()
+        report['vehicle_physics'] = dict(mass=physics.mass, use_gear_autobox=physics.use_gear_autobox,
+            gear_switch_time=physics.gear_switch_time, clutch_strength=physics.clutch_strength,
+            max_rpm=physics.max_rpm)
+        report['physics_sampling'] = dict(substepping=settings.substepping,
+            max_substep_delta_time=settings.max_substep_delta_time, max_substeps=settings.max_substeps)
         steering_path = [(p.transform.location.x, -p.transform.location.y, p.transform.location.z) for p in samples]
         axis = (forward.x, forward.y, forward.z)
         collision = world.spawn_actor(library.find('sensor.other.collision'), carla.Transform(), attach_to=ego)
         actors.append(collision)
         collision.listen(lambda event: collisions.append(dict(frame=event.frame, other=event.other_actor.type_id)))
         for vehicle in (ego, lead):
-            vehicle.apply_control(carla.VehicleControl(brake=1.0))
+            vehicle.apply_control(carla.VehicleControl(brake=1.0,
+                manual_gear_shift=args.gear_mode == 'forward', gear=1 if args.gear_mode == 'forward' else 0))
         for _ in range(20):
             world.tick(20.0)
         lead.set_simulate_physics(False)
         lead_origin = lead.get_location()
         origin = ego.get_location()
         cruise = args.speed_kmh / 3.6
-        ego.apply_control(carla.VehicleControl())
+        ego.apply_control(carla.VehicleControl(manual_gear_shift=args.gear_mode == 'forward',
+                                              gear=1 if args.gear_mode == 'forward' else 0))
         # Spin up wheel dynamics before the measured experiment. Velocity is
         # never forced inside the subsequent distance-control loop.
         for _ in range(20):
@@ -363,6 +373,9 @@ def run(args):
             lane_offset = et.location - wp.transform.location
             lane_lateral = -forward.y * lane_offset.x + forward.x * lane_offset.y
             yaw_error = (et.rotation.yaw - spawn.rotation.yaw + 180) % 360 - 180
+            velocity = ego_state.get_velocity()
+            acceleration = ego_state.get_acceleration()
+            control = ego.get_control()
             return dict(frame=snapshot.frame, time=snapshot.timestamp.elapsed_seconds,
                         gap_m=gap, speed_mps=ego_state.get_velocity().length(),
                         longitudinal_origin_distance_m=sum(v * a for v, a in zip(
@@ -371,7 +384,12 @@ def run(args):
                         measured_reference_offset_m=geometry,
                         lane_center_error_m=lane_lateral,
                         yaw_error_deg=yaw_error, lead_displacement_m=lt.location.distance(lead_origin),
-                        x=et.location.x, y=et.location.y, yaw_deg=et.rotation.yaw)
+                        x=et.location.x, y=et.location.y, yaw_deg=et.rotation.yaw,
+                        velocity_x_mps=velocity.x, velocity_y_mps=velocity.y, velocity_z_mps=velocity.z,
+                        longitudinal_speed_mps=velocity.x*forward.x+velocity.y*forward.y+velocity.z*forward.z,
+                        longitudinal_acceleration_mps2=acceleration.x*forward.x+acceleration.y*forward.y+acceleration.z*forward.z,
+                        gear=control.gear, applied_throttle=control.throttle, applied_brake=control.brake,
+                        hand_brake=control.hand_brake, manual_gear_shift=control.manual_gear_shift)
 
         def save_image(frame, name):
             while True:
@@ -445,7 +463,8 @@ def run(args):
             lateral = steering.step(steering_path, *carla_to_formal(state['x'], state['y'], state['yaw_deg']),
                                     state['speed_mps']) if steering else None
             applied_steer = max(-1.0, min(1.0, lateral['command'])) if lateral else 0.0
-            ego.apply_control(carla.VehicleControl(throttle=throttle, brake=brake, steer=applied_steer))
+            ego.apply_control(carla.VehicleControl(throttle=throttle, brake=brake, steer=applied_steer,
+                manual_gear_shift=args.gear_mode == 'forward', gear=1 if args.gear_mode == 'forward' else 0))
             if profile:
                 distance = profile.sample(state['elapsed'] + dt)[0]
                 lead.set_transform(carla.Transform(
