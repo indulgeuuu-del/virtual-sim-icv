@@ -376,7 +376,9 @@ Obstacle::Obstacle(const SimOne_Data_Obstacle_Entry& obstacle) :
         || !std::isfinite(sRelativeToRoad) || !std::isfinite(tRelativeToRoad) || !std::isfinite(z))
         throw std::domain_error("Obstacle road projection is unavailable");
 
-	SimOneAPI::GetLaneWidth(laneID, pt, laneWidth);
+	laneWidth = std::numeric_limits<double>::quiet_NaN();
+	if (!SimOneAPI::GetLaneWidth(laneID, pt, laneWidth) || !std::isfinite(laneWidth) || laneWidth <= 0)
+		throw std::domain_error("Obstacle lane width is unavailable");
 	roadWidth = getRoadWidth(laneID, pt);
 
 	getObstacleLaneSidePosition(obstacle, leftLanePt, rightLanePt);
@@ -577,7 +579,9 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
             || !std::isfinite(sRelativeToRoad) || !std::isfinite(tRelativeToRoad) || !std::isfinite(z))
             throw std::domain_error("Merged obstacle road projection is unavailable");
 
-        SimOneAPI::GetLaneWidth(laneID, pt, laneWidth);
+        laneWidth = std::numeric_limits<double>::quiet_NaN();
+        if (!SimOneAPI::GetLaneWidth(laneID, pt, laneWidth) || !std::isfinite(laneWidth) || laneWidth <= 0)
+            throw std::domain_error("Merged obstacle lane width is unavailable");
         roadWidth = getRoadWidth(laneID, pt);
 
         getObstacleLaneSidePosition(pt, leftLanePt, rightLanePt);

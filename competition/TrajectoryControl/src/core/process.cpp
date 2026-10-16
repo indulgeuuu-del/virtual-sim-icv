@@ -1,6 +1,7 @@
 ﻿#include <set>
 #include <memory>
 #include <stdexcept>
+#include <limits>
 #include "SimOneServiceAPI.h"
 #include "SimOneSensorAPI.h"
 #include "vehicle.h"
@@ -9,6 +10,8 @@
 
 double getRoadWidth(const SSD::SimString& laneId, const SSD::SimPoint3D& pos)
 {
+	if (laneId.Empty() || !std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z))
+		throw std::domain_error("Road width query input is invalid");
 	double totalWidth = 0.0;
 	std::set<SSD::SimString> visitedLanes; // 记录已访问的车道，避免重复计算
 
@@ -19,27 +22,23 @@ double getRoadWidth(const SSD::SimString& laneId, const SSD::SimPoint3D& pos)
 		visitedLanes.insert(laneId);
 
 		// 获取当前车道的宽度
-		double laneWidth = 0.0;
-		if (SimOneAPI::GetLaneWidth(laneId, pos, laneWidth))
-		{
-			totalWidth += laneWidth;
-		}
+		double laneWidth = std::numeric_limits<double>::quiet_NaN();
+		if (!SimOneAPI::GetLaneWidth(laneId, pos, laneWidth) || !std::isfinite(laneWidth) || laneWidth <= 0)
+			throw std::domain_error("Road width contains unavailable lane width");
+		totalWidth += laneWidth;
+		if (!std::isfinite(totalWidth)) throw std::domain_error("Road width sum is invalid");
 
 		// 获取车道连接信息
 		HDMapStandalone::MLaneLink linkLane;
-		if (SimOneAPI::GetLaneLink(laneId, linkLane))
-		{
-			// 递归获取左邻接车道的宽度
-			if (!linkLane.leftNeighborLaneName.Empty())
-			{
-				getNeighborLaneWidthRef(linkLane.leftNeighborLaneName, pos, getNeighborLaneWidthRef);
-			}
-
-			// 递归获取右邻接车道的宽度
-			if (!linkLane.rightNeighborLaneName.Empty())
-			{
-				getNeighborLaneWidthRef(linkLane.rightNeighborLaneName, pos, getNeighborLaneWidthRef);
-			}
+		// 查询失败不是没有相邻车道，不能返回部分累计宽度。
+		if (!SimOneAPI::GetLaneLink(laneId, linkLane))
+			throw std::domain_error("Road width neighbor query failed");
+		// 递归获取左右邻接车道的宽度
+		if (!linkLane.leftNeighborLaneName.Empty()) {
+			getNeighborLaneWidthRef(linkLane.leftNeighborLaneName, pos, getNeighborLaneWidthRef);
+		}
+		if (!linkLane.rightNeighborLaneName.Empty()) {
+			getNeighborLaneWidthRef(linkLane.rightNeighborLaneName, pos, getNeighborLaneWidthRef);
 		}
 		};
 

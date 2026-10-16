@@ -124,6 +124,7 @@ def main():
             root / 'tests/cpp/lateral_gap_test.cpp',
             root / 'tests/cpp/traffic_light_test.cpp',
             root / 'tests/cpp/obstacle_boundary_test.cpp',
+            root / 'tests/cpp/road_width_test.cpp',
             root / 'tests/cpp/track_speed_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
@@ -134,6 +135,20 @@ def main():
         report['production_revision'] = revision or 'working-tree'
         report['git_head'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
         obstacle = sources['TrajectoryControl/src/core/obstacle.cpp']
+        width_harness = read_source(root / 'tests/cpp/road_width_test.cpp')
+        width_harness = width_harness.replace('// @ROAD_WIDTH@', between(
+            sources['TrajectoryControl/src/core/process.cpp'], 'double getRoadWidth(', 'float getLaneAzimuth('))
+        constructors = obstacle.split('/* 计算相对于主车的 ST 坐标 */')[1:]
+        for marker, part in zip(('// @RAW_WIDTH@', '// @GROUP_WIDTH@'), constructors):
+            start = part.index('SimOneAPI::GetLaneWidth(')
+            # Include the complete statement/validation block, starting at its line.
+            start = part.rfind('\n', 0, start) + 1
+            if 'laneWidth = std::numeric_limits' in part[:start]:
+                start = part.rfind('laneWidth = std::numeric_limits', 0, start)
+            end = part.index('roadWidth = getRoadWidth(', start)
+            end = part.index(';', end) + 1
+            width_harness = width_harness.replace(marker, part[start:end])
+        (output / 'road_width.cpp').write_bytes(width_harness.encode('utf-8'))
         boundary = between(obstacle, 'void getObstacleLaneSidePosition(', '// 可以用 ST 坐标')
         boundary_harness = read_source(root / 'tests/cpp/obstacle_boundary_test.cpp')
         checked_lane = (between(obstacle, 'static SSD::SimString getObstacleLaneChecked(', 'void getObstacleLaneSidePosition(')
@@ -245,7 +260,9 @@ def main():
             raise ValueError('review obstacle constructor projection extraction')
         fixture = read_source(follow_dir / 'main.h')
         for marker, part in zip(('// @RAW_PROJECTION@', '// @GROUP_PROJECTION@'), projection_parts):
-            fixture = fixture.replace(marker, part.split('SimOneAPI::GetLaneWidth(', 1)[0])
+            width_start = ('laneWidth = std::numeric_limits' if 'laneWidth = std::numeric_limits' in part
+                           else 'SimOneAPI::GetLaneWidth(')
+            fixture = fixture.replace(marker, part.split(width_start, 1)[0])
         (follow_dir / 'main.h').write_bytes(fixture.encode('utf-8'))
         (follow_dir / 'controller.hpp').write_bytes(support.encode('utf-8'))
         (follow_dir / 'main_follow.cpp').write_bytes(sources['TrajectoryControl/src/main_follow.cpp'].encode('utf-8'))
@@ -302,6 +319,12 @@ def main():
                     'passed': result.returncode == 0, 'output': (result.stdout + result.stderr).strip()}
 
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
+        compile_run(output, ['road_width.cpp'],
+                    [f'{kind}_{mode}' for kind in ('road','raw','group') for mode in
+                     ('valid','single','failed','partial','unwritten','nan','inf','negative','zero','link_failed')]
+                    + ['road_empty','road_point_nan','road_overflow']
+                    + [f'{kind}_{mode}' for kind in ('raw','group') for mode in
+                       ('first_failed','first_unwritten','first_nan')], 'road_width')
         compile_run(output, ['boundary.cpp'], ['valid','empty_lane','failed_partial','left_empty',
                     'right_empty','nan','inf','all_nan','point_nan',
                     'road_valid','road_single','road_aligned','road_empty_lane','road_failed_partial','road_right_failed',
