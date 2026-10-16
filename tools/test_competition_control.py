@@ -289,7 +289,8 @@ def main():
                      'map_nearest','map_projection','map_empty_lane','map_nonfinite','map_bad_position',
                      'map_initial','map_repeated','heading_failed','heading_nonfinite','heading_zero',
                      'link_partial','link_cleared','link_initial','link_repeated','road_invalid','road_overflow',
-                     'successor_ambiguous','link_empty_valid','junction_valid'], 'follow_input')
+                     'successor_ambiguous','link_empty_valid','junction_valid',
+                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'], 'follow_input')
         compile_run(follow_dir, ['track_prefix.cpp', 'support.cpp', 'test.cpp'],
                     ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
                      'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
@@ -297,7 +298,8 @@ def main():
                      'map_nearest','map_projection','map_empty_lane','map_nonfinite','map_bad_position',
                      'map_initial','map_repeated','heading_failed','heading_nonfinite','heading_zero',
                      'link_partial','link_cleared','link_initial','link_repeated','road_invalid','road_overflow',
-                     'successor_ambiguous','link_empty_valid','junction_valid'], 'track_input', ['/DTEST_TRACK_PREFIX'])
+                     'successor_ambiguous','link_empty_valid','junction_valid',
+                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'], 'track_input', ['/DTEST_TRACK_PREFIX'])
         report['passed'] = bool(report['tests']) and all(t['passed'] for t in report['tests'].values())
     except (OSError, ValueError, IndexError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
         report['error'] = f'{type(error).__name__}: {error}'

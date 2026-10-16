@@ -136,6 +136,12 @@ bool updateObstacleData(int timeoutFrames)
 	}
 	else
 	{
+		// SDK读取成功不代表数量有效；拒绝异常帧，不能当作空场景继续行驶。
+		const size_t obstacleCapacity = sizeof(pObstacle->obstacle) / sizeof(pObstacle->obstacle[0]);
+		if (pObstacle->obstacleSize < 0 || static_cast<size_t>(pObstacle->obstacleSize) > obstacleCapacity) {
+			globalLogger(Logger::Color::BrightMagenta) << "障碍物数量超出数组范围，不能使用本帧数据";
+			return false;
+		}
 		if (!FlagType::isObstacleInitialized)
 		{
 			FlagType::isObstacleInitialized = true;

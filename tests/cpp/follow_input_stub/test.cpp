@@ -5,7 +5,13 @@ int main(int argc,char** argv) {
         require(argc==2,"test name required");
         const std::string name=argv[1];
         inputs={{},{},{}};
-        if(name=="gps_initial") inputs[0].gps=false;
+        if(name=="count_negative") inputs[1].count=-1;
+        else if(name=="count_overflow") inputs[1].count=3;
+        else if(name=="count_extreme") inputs[1].count=2147483647;
+        else if(name=="count_initial") inputs[0].count=-1;
+        else if(name=="count_repeated") { inputs[0].count=3; inputs[1].count=3; }
+        else if(name=="count_capacity") { for(auto& a:inputs) a.count=2; }
+        else if(name=="gps_initial") inputs[0].gps=false;
         else if(name=="obstacle_initial") { inputs[0].obstacle=false; frameCount=100; }
         else if(name=="gps_transient") inputs[1].gps=false;
         else if(name=="obstacle_stale") inputs[1].obstacle=false;
@@ -38,6 +44,14 @@ int main(int argc,char** argv) {
         else if(name=="link_empty_valid") { for(auto& a:inputs) { a.noNeighbors=true; a.noSuccessors=true; } }
         else if(name=="junction_valid") { for(auto& a:inputs) a.junctionOnly=true; }
         else throw std::runtime_error("unknown test");
+        // Prove rejection before executing a loop with malformed counts. Old
+        // revisions fail here, rather than performing an out-of-bounds read.
+        if(name.rfind("count_",0)==0 && name!="count_capacity") {
+            waits = name=="count_initial" || name=="count_repeated" ? 1 : 2;
+            require(!updateObstacleData(),"successful SDK read accepted malformed obstacle count");
+            waits=0; obstacleReads=0;
+            FlagType::isObstacleInitialized=false;
+        }
         try {
 #ifdef TEST_TRACK_PREFIX
             main_track();
@@ -51,7 +65,7 @@ int main(int argc,char** argv) {
         int expectedDrives=0;
         for(size_t i=0;i<inputs.size();++i) {
             const auto& input=inputs[i];
-            if(input.gps && input.obstacle && input.route && mapValid(input)) {
+            if(input.gps && input.obstacle && input.count>=0 && input.count<=2 && input.route && mapValid(input)) {
                 ++expectedDrives;
                 require(sends[i].throttle>0,"fresh input failed to resume");
             } else {
