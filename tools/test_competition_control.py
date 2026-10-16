@@ -89,6 +89,7 @@ def main():
         'TrajectoryControl/src/main.cpp', 'TrajectoryControl/src/main_follow.cpp',
         'TrajectoryControl/src/main_track.cpp',
         'TrajectoryControl/src/core/obstacle.h', 'TrajectoryControl/src/tools/prediction.cpp',
+        'TrajectoryControl/src/core/stopline.cpp', 'TrajectoryControl/src/core/stopline.h',
     )
     report = {'sdk_build_verified': False, 'platform_run_verified': False,
               'official_score_verified': False,
@@ -129,6 +130,7 @@ def main():
             root / 'tests/cpp/obstacle_constructor_test.cpp',
             root / 'tests/cpp/constructed_follow_test.cpp',
             root / 'tests/cpp/grouped_constructor_test.cpp',
+            root / 'tests/cpp/stopline_projection_test.cpp',
             root / 'tests/cpp/track_speed_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
@@ -176,6 +178,15 @@ def main():
             constructor_fixture = constructor_fixture.replace(marker, code)
         preamble = boundary_harness.replace('// @BOUNDARY@', boundary).split('int main(', 1)[0]
         (output / 'constructor.cpp').write_bytes((preamble + constructor_fixture).encode('utf-8'))
+        stopline = sources['TrajectoryControl/src/core/stopline.cpp']
+        stop_fixture = read_source(root / 'tests/cpp/stopline_projection_test.cpp')
+        stop_fixture = stop_fixture.replace('// @CLASS@', between(sources['TrajectoryControl/src/core/stopline.h'],
+            'class StopLine {', '// 计算到主车最近的停止线'))
+        stop_fixture = stop_fixture.replace('// @CONSTRUCTOR@', between(stopline,
+            'StopLine::StopLine(Obstacle& obstacle)', 'StopLine::StopLine(const ManualStopLineReservoir&'))
+        stop_fixture = stop_fixture.replace('// @PROJECTION@', between(stopline,
+            'bool StopLine::checkVechicleInSameLane(', 'bool getLaneChangePath(StopLine& stopLine)'))
+        (output / 'stopline_projection.cpp').write_bytes(stop_fixture.encode('utf-8'))
         grouped = read_source(root / 'tests/cpp/grouped_constructor_test.cpp')
         grouped = grouped.replace('// @DISTANCE@', between(sources['util/UtilMath.h'],
             'static double distance(double pt1_x,', 'static double planarDistance('))
@@ -359,6 +370,9 @@ def main():
                     'passed': result.returncode == 0, 'output': (result.stdout + result.stderr).strip()}
 
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
+        compile_run(output, ['stopline_projection.cpp'], ['valid','outside','reversed']
+                    + [f'{fault}_{call}' for fault in ('unwritten','written','nan_s','nan_t','inf_z')
+                       for call in range(3)], 'stopline_projection')
         compile_run(output, ['grouped_constructor.cpp'],
                     ['exact','below','above','chain','sparse','reordered','empty','recovery'], 'grouped_constructor')
         compile_run(output, ['constructed_follow.cpp'], ['valid','prediction_nan','prediction_inf','prediction_growth',

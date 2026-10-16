@@ -1,10 +1,11 @@
-#include "SimOneSensorAPI.h"
+ï»¿#include "SimOneSensorAPI.h"
 #include "vehicle.h"
 #include "obstacle.h"
 #include "manual.h"
 #include "stopline.h"
+#include <stdexcept>
 
-// ¼ÆËãµ½Ö÷³µ×î½üµÄÍ£Ö¹Ïß
+// è®¡ç®—åˆ°ä¸»è½¦æœ€è¿‘çš„åœæ­¢çº¿
 bool calculateNearestStopLine(const std::vector<StopLine>& list, StopLine& stopLine, float& distance)
 {
     if (list.empty()) {
@@ -30,27 +31,27 @@ bool calculateNearestStopLine(const std::vector<StopLine>& list, StopLine& stopL
     return true;
 }
 
-// Ä¬ÈÏ¹¹Ôìº¯Êı
+// é»˜è®¤æ„é€ å‡½æ•°
 StopLine::StopLine()
-    : type(Type::Whole),               // Ä¬ÈÏÀàĞÍÎª Whole
-    strategy(Strategy::StopStart),     // Ä¬ÈÏ²ßÂÔÎª StopStart
-    isVechicleInSameLane(false),       // Ä¬ÈÏ²»ÔÚÍ¬³µµÀ
-    isBehind(false),                   // Ä¬ÈÏ²»ÔÚÖ÷³µºóÃæ
+    : type(Type::Whole),               // é»˜è®¤ç±»å‹ä¸º Whole
+    strategy(Strategy::StopStart),     // é»˜è®¤ç­–ç•¥ä¸º StopStart
+    isVechicleInSameLane(false),       // é»˜è®¤ä¸åœ¨åŒè½¦é“
+    isBehind(false),                   // é»˜è®¤ä¸åœ¨ä¸»è½¦åé¢
     isValid(false),
-    toVehicleDist(0.0f),               // Ä¬ÈÏ¾àÀëÎª 0
-    vx(0.0f), vy(0.0f),                // Ä¬ÈÏËÙ¶ÈÎª 0
-    velocity(0.0f),                    // Ä¬ÈÏËÙ¶ÈÎª 0
-    velocityPlanar(0.0f),              // Ä¬ÈÏÆ½ÃæËÙ¶ÈÎª 0
-    offset(0.0f),                      // ¾àÀëÕÏ°­Îï offset Ê±Í£³µ
-    obstaclePtr(nullptr)               // Ä¬ÈÏÕÏ°­ÎïÖ¸ÕëÎª¿Õ
+    toVehicleDist(0.0f),               // é»˜è®¤è·ç¦»ä¸º 0
+    vx(0.0f), vy(0.0f),                // é»˜è®¤é€Ÿåº¦ä¸º 0
+    velocity(0.0f),                    // é»˜è®¤é€Ÿåº¦ä¸º 0
+    velocityPlanar(0.0f),              // é»˜è®¤å¹³é¢é€Ÿåº¦ä¸º 0
+    offset(0.0f),                      // è·ç¦»éšœç¢ç‰© offset æ—¶åœè½¦
+    obstaclePtr(nullptr)               // é»˜è®¤éšœç¢ç‰©æŒ‡é’ˆä¸ºç©º
 {
-    // Ä¬ÈÏµÄ src, dst, mid ×ø±ê¿ÉÒÔ³õÊ¼»¯ÎªÔ­µã
+    // é»˜è®¤çš„ src, dst, mid åæ ‡å¯ä»¥åˆå§‹åŒ–ä¸ºåŸç‚¹
     src = SSD::SimPoint3D(0.0f, 0.0f, 0.0f);
     dst = SSD::SimPoint3D(0.0f, 0.0f, 0.0f);
     mid = SSD::SimPoint3D(0.0f, 0.0f, 0.0f);
 }
 
-// Í¨¹ı½»Í¨ĞÅºÅµÆ´´½¨Í£Ö¹Ïß
+// é€šè¿‡äº¤é€šä¿¡å·ç¯åˆ›å»ºåœæ­¢çº¿
 StopLine::StopLine(const HDMapStandalone::MSignal& light) : 
     type(Type::Whole), strategy(Strategy::StopStart), vx(0.0f), vy(0.0f), velocity(0.0f), velocityPlanar(0.0f), isVechicleInSameLane(true), isBehind(false), obstaclePtr(nullptr), offset(0.0f), isValid(true)
 {
@@ -64,11 +65,11 @@ StopLine::StopLine(const HDMapStandalone::MSignal& light) :
     toVehicleDist = calculateVehicleDistance(mainVehicle.pt);
 }
 
-// Í¨¹ıÕÏ°­Îï´´½¨Í£Ö¹Ïß
+// é€šè¿‡éšœç¢ç‰©åˆ›å»ºåœæ­¢çº¿
 StopLine::StopLine(Obstacle& obstacle) :
     vx(obstacle.vx), vy(obstacle.vy), velocity(obstacle.velocity), velocityPlanar(obstacle.velocityPlanar), obstaclePtr(&obstacle)
 {
-    if (obstacle.type == Obstacle::Type::AmongCrosswalk) // ÔÚ°ßÂíÏßÉÏµÄÕÏ°­Îï
+    if (obstacle.type == Obstacle::Type::AmongCrosswalk) // åœ¨æ–‘é©¬çº¿ä¸Šçš„éšœç¢ç‰©
     {
         type = Type::Whole;
         strategy = Strategy::StopStart;
@@ -81,9 +82,9 @@ StopLine::StopLine(Obstacle& obstacle) :
         offset = 0.0f;
         isValid = true;
     }
-    else if (obstacle.type == Obstacle::Type::Horizental) // ÕÏ°­ÎïÊÇÑØ×Å³µµÀÔË¶¯µÄ
+    else if (obstacle.type == Obstacle::Type::Horizental) // éšœç¢ç‰©æ˜¯æ²¿ç€è½¦é“è¿åŠ¨çš„
     {
-        if ((mainVehicle.leftLaneExist || mainVehicle.rightLaneExist) && IS_SINGLE_STOPLINE(obstacle)) // Èç¹ûÊÇ°ëÍ£Ö¹Ïß
+        if ((mainVehicle.leftLaneExist || mainVehicle.rightLaneExist) && IS_SINGLE_STOPLINE(obstacle)) // å¦‚æœæ˜¯åŠåœæ­¢çº¿
         {
             type = Type::Single;
             strategy = Strategy::LaneChange;
@@ -93,7 +94,7 @@ StopLine::StopLine(Obstacle& obstacle) :
             if (obstacle.laneID == mainVehicle.laneID && std::fabs(obstacle.tRelativeToVehicle) < 0.5f * obstacle.laneWidth) isValid = true;
             else isValid = false;
         }
-        else // Èç¹ûÊÇÈ«Í£Ö¹Ïß
+        else // å¦‚æœæ˜¯å…¨åœæ­¢çº¿
         {
             type = Type::Whole;
             strategy = Strategy::StopStart;
@@ -104,7 +105,7 @@ StopLine::StopLine(Obstacle& obstacle) :
 
         offset = 0.5f * obstacle.length;
     }
-    else if (obstacle.type == Obstacle::Type::Vertical) // ÕÏ°­ÎïÊÇ´¹Ö±³µµÀÔË¶¯µÄ
+    else if (obstacle.type == Obstacle::Type::Vertical) // éšœç¢ç‰©æ˜¯å‚ç›´è½¦é“è¿åŠ¨çš„
     {
         type = Type::Whole;
         strategy = Strategy::StopStart;
@@ -114,15 +115,15 @@ StopLine::StopLine(Obstacle& obstacle) :
         offset = 0.5f * obstacle.width;
         isValid = true;
     }
-    else if (obstacle.type == Obstacle::Type::Static) // ÕÏ°­ÎïÊÇ¾²Ö¹µÄ
+    else if (obstacle.type == Obstacle::Type::Static) // éšœç¢ç‰©æ˜¯é™æ­¢çš„
     {
-        /*LOG << "ÒªÇó£ºif (obstacle.width < lessThanLaneFactor * obstacle.laneWidth) return true; if (obstacle.width > moreThanRoadFactor * obstacle.roadWidth) return false; return true;";
+        /*LOG << "è¦æ±‚ï¼šif (obstacle.width < lessThanLaneFactor * obstacle.laneWidth) return true; if (obstacle.width > moreThanRoadFactor * obstacle.roadWidth) return false; return true;";
         LOG << "obstacle.lane = " << obstacle.laneWidth;
         LOG << "obstacle.width = " << obstacle.width;
         LOG << "lessThanLaneFactor * obstacle.laneWidth = " << lessThanLaneFactor * obstacle.laneWidth;
         LOG << "moreThanRoadFactor * obstacle.roadWidth = " << moreThanRoadFactor * obstacle.roadWidth;*/
 
-        // Èç¹ûÊÇ°ëÍ£Ö¹ÏßÇÒ¿ÉÒÔ±äµÀ£¨Èç¹ûÊÇ°ëÍ£Ö¹ÏßÇÒ²»ÊÇµ¥³µµÀ£©£¬ÄÇ¾Í¿ÉÒÔ´´½¨°ëÍ£Ö¹Ïß£¬×¢½â£ºµ¥³µµÀ²»´´½¨°ëÍ£Ö¹Ïß
+        // å¦‚æœæ˜¯åŠåœæ­¢çº¿ä¸”å¯ä»¥å˜é“ï¼ˆå¦‚æœæ˜¯åŠåœæ­¢çº¿ä¸”ä¸æ˜¯å•è½¦é“ï¼‰ï¼Œé‚£å°±å¯ä»¥åˆ›å»ºåŠåœæ­¢çº¿ï¼Œæ³¨è§£ï¼šå•è½¦é“ä¸åˆ›å»ºåŠåœæ­¢çº¿
         if ((mainVehicle.leftLaneExist || mainVehicle.rightLaneExist) && IS_SINGLE_STOPLINE(obstacle))
         {
             type = Type::Single;
@@ -133,7 +134,7 @@ StopLine::StopLine(Obstacle& obstacle) :
             if (obstacle.laneID == mainVehicle.laneID && std::fabs(obstacle.tRelativeToVehicle) < 0.5f * obstacle.laneWidth) isValid = true;
             else isValid = false;
         }
-        else // Èç¹ûÊÇÈ«Í£Ö¹Ïß£¬»òÕßÈç¹ûÊÇµ¥³µµÀ£¬ÄÇ¾Í¶¼Òª´´½¨È«Í£Ö¹Ïß
+        else // å¦‚æœæ˜¯å…¨åœæ­¢çº¿ï¼Œæˆ–è€…å¦‚æœæ˜¯å•è½¦é“ï¼Œé‚£å°±éƒ½è¦åˆ›å»ºå…¨åœæ­¢çº¿
         {
             type = Type::Whole;
             strategy = Strategy::StopStart;
@@ -142,7 +143,7 @@ StopLine::StopLine(Obstacle& obstacle) :
             isValid = true;
         }
 
-        // Èç¹ûÊÇµ¥³µµÀ£¨Òà¼´²»ÄÜ±äµÀ£©£¬ÇÒÕÏ°­ÎïÔÚ³µµÀÍâ£¬Ôò¸ÃÍ£Ö¹Ïß²»ºÏ·¨£¬Òà¼´²»ÔÊĞí´´½¨ÈÎºÎÍ£Ö¹Ïß
+        // å¦‚æœæ˜¯å•è½¦é“ï¼ˆäº¦å³ä¸èƒ½å˜é“ï¼‰ï¼Œä¸”éšœç¢ç‰©åœ¨è½¦é“å¤–ï¼Œåˆ™è¯¥åœæ­¢çº¿ä¸åˆæ³•ï¼Œäº¦å³ä¸å…è®¸åˆ›å»ºä»»ä½•åœæ­¢çº¿
         if (!(mainVehicle.leftLaneExist || mainVehicle.rightLaneExist) && (std::abs(obstacle.tRelativeToLane) > 0.5f * obstacle.laneWidth))
         {
             isValid = false;
@@ -153,11 +154,23 @@ StopLine::StopLine(Obstacle& obstacle) :
 
     mid = SSD::SimPoint3D(0.5 * (src.x + dst.x), 0.5 * (src.y + dst.y), 0.5 * (src.z + dst.z));
     isBehind = isStopLineBehindVehicle(src, dst, mainVehicle.pt, obstacle.tl, obstacle.br);
-    isVechicleInSameLane = checkVechicleInSameLane(*obstaclePtr);
+    try {
+        isVechicleInSameLane = checkVechicleInSameLane(*obstaclePtr);
+    }
+    catch (const std::domain_error& error) {
+        // é“è·¯å…³ç³»æœªçŸ¥æ—¶ä¸èƒ½å¿½ç•¥ç›®æ ‡æˆ–è¿›å…¥å˜é“ï¼Œç”Ÿæˆå½“å‰å¸§çš„åœè½¦çº¦æŸã€‚
+        type = Type::Whole;
+        strategy = Strategy::StopStart;
+        isValid = isVechicleInSameLane = true;
+        isBehind = false;
+        toVehicleDist = offset = 0.0f;
+        LOG << error.what();
+        return;
+    }
     toVehicleDist = calculateVehicleDistance(mainVehicle.pt);
 }
 
-// Í¨¹ıÊÖ¶¯´´½¨Í£Ö¹Ïß
+// é€šè¿‡æ‰‹åŠ¨åˆ›å»ºåœæ­¢çº¿
 StopLine::StopLine(const ManualStopLineReservoir& reservoir) :
     vx(0.0f), vy(0.0f), velocity(0.0f), velocityPlanar(0.0f), obstaclePtr(nullptr), offset(0.0f), isValid(true), isBehind(false), isVechicleInSameLane(true)
 {
@@ -187,7 +200,7 @@ StopLine StopLine::AttractLine(Obstacle& obstacle, const SSD::SimPoint3D& pt)
     attractLine.obstaclePtr = &obstacle;
     attractLine.isValid = true;
 
-    // ¼ÆËãÔÚ´¹Ö±ÓÚµÀÂ··½ÏòÉÏ£¬¾àÀë pt µãÒ»¶¨¾àÀëµÄÁ½¸öµã£»pt1 Õı·½Ïò£»pt2 ¸º·½Ïò
+    // è®¡ç®—åœ¨å‚ç›´äºé“è·¯æ–¹å‘ä¸Šï¼Œè·ç¦» pt ç‚¹ä¸€å®šè·ç¦»çš„ä¸¤ä¸ªç‚¹ï¼›pt1 æ­£æ–¹å‘ï¼›pt2 è´Ÿæ–¹å‘
     auto getPerpendicular = [](const SSD::SimPoint3D& pt, float azimuthDeg, float distance, SSD::SimPoint3D& pt1, SSD::SimPoint3D& pt2)
         {
             float theta = azimuthDeg * 0.017453f;
@@ -209,13 +222,13 @@ StopLine StopLine::AttractLine(Obstacle& obstacle, const SSD::SimPoint3D& pt)
 
     attractLine.isBehind = attractLine.isStopLineBehindVehicle(attractLine.src, attractLine.dst, mainVehicle.pt, obstacle.tl, obstacle.br);
     //attractLine.isVechicleInSameLane = attractLine.checkVechicleInSameLane(*attractLine.obstaclePtr);
-    attractLine.isVechicleInSameLane = true; // ÔÊĞíÎüÒıÏß¿ÉÒÔ²»¿ç¹ıÖ÷³µ
+    attractLine.isVechicleInSameLane = true; // å…è®¸å¸å¼•çº¿å¯ä»¥ä¸è·¨è¿‡ä¸»è½¦
     attractLine.toVehicleDist = attractLine.calculateVehicleDistance(mainVehicle.pt);
 
     return attractLine;
 }
 
-// ¼ÆËãÍ£Ö¹Ïßµ½Ö÷³µµÄ¾àÀë
+// è®¡ç®—åœæ­¢çº¿åˆ°ä¸»è½¦çš„è·ç¦»
 double StopLine::calculateVehicleDistance(const SSD::SimPoint3D& vehiclePosition) const
 {
     float dx = dst.x - src.x;
@@ -227,41 +240,47 @@ double StopLine::calculateVehicleDistance(const SSD::SimPoint3D& vehiclePosition
     return (denominator > 1e-6f) ? (numerator / denominator) : 0.0;
 }
 
-// ÅĞ¶ÏÍ£Ö¹ÏßÊÇ·ñÔÚÖ÷³µºó·½
+// åˆ¤æ–­åœæ­¢çº¿æ˜¯å¦åœ¨ä¸»è½¦åæ–¹
 bool StopLine::isStopLineBehindVehicle(const SSD::SimPoint3D& srcPos, const SSD::SimPoint3D& dstPos, const SSD::SimPoint3D& mainVehiclePos, const SSD::SimPoint3D& tlPos, const SSD::SimPoint3D& brPos)
 {
-    // Ê¹ÓÃ¶şÎ¬²æ»ıº¯Êı£¬ºöÂÔ z ×ø±ê
+    // ä½¿ç”¨äºŒç»´å‰ç§¯å‡½æ•°ï¼Œå¿½ç•¥ z åæ ‡
     float crossPos = crossProduct(srcPos, dstPos, mainVehiclePos);
     float crossTL = crossProduct(srcPos, dstPos, tlPos);
     float crossBR = crossProduct(srcPos, dstPos, brPos);
 
-    // ÅĞ¶ÏÍ£³µÏßÊÇ·ñÔÚÖ÷³µºó·½
+    // åˆ¤æ–­åœè½¦çº¿æ˜¯å¦åœ¨ä¸»è½¦åæ–¹
     if ((crossPos >= 0 && crossTL >= 0) || (crossPos <= 0 && crossTL <= 0)) {
-        return true;  // Í£³µÏßÔÚÖ÷³µºó·½
+        return true;  // åœè½¦çº¿åœ¨ä¸»è½¦åæ–¹
     }
     if ((crossPos >= 0 && crossBR >= 0) || (crossPos <= 0 && crossBR <= 0)) {
-        return false; // Í£³µÏß²»ÔÚÖ÷³µºó·½
+        return false; // åœè½¦çº¿ä¸åœ¨ä¸»è½¦åæ–¹
     }
 
-    return false;  // Ä¬ÈÏ·µ»Ø false£¬±íÊ¾Í£³µÏß²»ÔÚÖ÷³µºó·½
+    return false;  // é»˜è®¤è¿”å› falseï¼Œè¡¨ç¤ºåœè½¦çº¿ä¸åœ¨ä¸»è½¦åæ–¹
 }
 
-// ²éÑ¯Í£Ö¹ÏßÊÇ·ñÓëÖ÷³µÍ¬³µµÀ
+// æŸ¥è¯¢åœæ­¢çº¿æ˜¯å¦ä¸ä¸»è½¦åŒè½¦é“
 bool StopLine::checkVechicleInSameLane(const Obstacle& obstacle) const
 {
-    // ×ªÈë Frenet ×ø±êÏµÏÂ´¦Àí£¬ÅĞ¶ÏÍ£Ö¹ÏßµÄÆğµãºÍÖÕµãÊÇ·ñ¾ùÔÚÖ÷³µµÄÍ¬Ò»²à£¬Èç¹û·Ö±ğÔÚÖ÷³µµÄÁ½²à£¬ÔòÍ£Ö¹ÏßÓëÖ÷³µÍ¬³µµÀ
-    // s£ºÑØ³µµÀÖĞĞÄÏßµÄ¾àÀë t£º´¹Ö±ÓÚ³µµÀÖĞĞÄÏßµÄ¾àÀë z£ºÊäÈëµãÔÚ¾Ö²¿ ENU ×ø±êÏµÖĞµÄ¸ß¶ÈÖµ
+    // è½¬å…¥ Frenet åæ ‡ç³»ä¸‹å¤„ç†ï¼Œåˆ¤æ–­åœæ­¢çº¿çš„èµ·ç‚¹å’Œç»ˆç‚¹æ˜¯å¦å‡åœ¨ä¸»è½¦çš„åŒä¸€ä¾§ï¼Œå¦‚æœåˆ†åˆ«åœ¨ä¸»è½¦çš„ä¸¤ä¾§ï¼Œåˆ™åœæ­¢çº¿ä¸ä¸»è½¦åŒè½¦é“
+    // sï¼šæ²¿è½¦é“ä¸­å¿ƒçº¿çš„è·ç¦» tï¼šå‚ç›´äºè½¦é“ä¸­å¿ƒçº¿çš„è·ç¦» zï¼šè¾“å…¥ç‚¹åœ¨å±€éƒ¨ ENU åæ ‡ç³»ä¸­çš„é«˜åº¦å€¼
     double sSrc = 0.0, tSrc = 0.0;
     double sDst = 0.0, tDst = 0.0;
     double sVeh = 0.0, tVeh = 0.0;
     double zTemp = 0.0;
 
-    // ¼ÆËãÍ£Ö¹ÏßÆğµãºÍÖÕµãÒÔ¼°Ö÷³µÏà¶ÔÓÚµÀÂ·²Î¿¼ÏßµÄ ST ×ø±ê
-    SimOneAPI::GetRoadST(mainVehicle.laneID, src, sSrc, tSrc, zTemp);
-    SimOneAPI::GetRoadST(mainVehicle.laneID, dst, sDst, tDst, zTemp);
-    SimOneAPI::GetRoadST(mainVehicle.laneID, mainVehicle.pt, sVeh, tVeh, zTemp);
+    // è®¡ç®—åœæ­¢çº¿èµ·ç‚¹å’Œç»ˆç‚¹ä»¥åŠä¸»è½¦ç›¸å¯¹äºé“è·¯å‚è€ƒçº¿çš„ ST åæ ‡
+    auto project = [&](const SSD::SimPoint3D& point, double& s, double& t) {
+        s = t = zTemp = std::numeric_limits<double>::quiet_NaN();
+        if (!SimOneAPI::GetRoadST(mainVehicle.laneID, point, s, t, zTemp)
+            || !std::isfinite(s) || !std::isfinite(t) || !std::isfinite(zTemp))
+            throw std::domain_error("Stop-line road projection unavailable: requesting stop");
+    };
+    project(src, sSrc, tSrc);
+    project(dst, sDst, tDst);
+    project(mainVehicle.pt, sVeh, tVeh);
 
-    // Èç¹ûÍ£Ö¹ÏßµÄÆğµãºÍÖÕµã¾ùÔÚÖ÷³µµÄÍ¬Ò»²à
+    // å¦‚æœåœæ­¢çº¿çš„èµ·ç‚¹å’Œç»ˆç‚¹å‡åœ¨ä¸»è½¦çš„åŒä¸€ä¾§
     float dt1 = tSrc - tVeh;
     float dt2 = tDst - tVeh;
 
@@ -269,15 +288,15 @@ bool StopLine::checkVechicleInSameLane(const Obstacle& obstacle) const
     return false;
 }
 
-// ¶ÔÓÚ¾²Ö¹µÄÍ£Ö¹ÏßµÄ±äµÀ²Ù×÷£¨Ê¹ÓÃ Liy ±äµÀ·¨£©
+// å¯¹äºé™æ­¢çš„åœæ­¢çº¿çš„å˜é“æ“ä½œï¼ˆä½¿ç”¨ Liy å˜é“æ³•ï¼‰
 bool getLaneChangePath(StopLine& stopLine)
 {
-    LOG << "ÊÇµÄbroµ÷ÓÃÁËliy±äµÀ·¢";
+    LOG << "æ˜¯çš„broè°ƒç”¨äº†liyå˜é“å‘";
     static SSD::SimString targetLaneID = mainVehicle.laneID;
 
     if (!stopLine.isVechicleInSameLane) return false;
 
-    if (stopLine.toVehicleDist < laneChangeDistThres) // ¾àÀëĞ¡ÓÚãĞÖµ£¬¿ªÊ¼±äµÀ
+    if (stopLine.toVehicleDist < laneChangeDistThres) // è·ç¦»å°äºé˜ˆå€¼ï¼Œå¼€å§‹å˜é“
     {
         HDMapStandalone::MLaneInfo laneInfoInit;
         HDMapStandalone::MLaneLink pLink;
@@ -294,7 +313,7 @@ bool getLaneChangePath(StopLine& stopLine)
             pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_RightBlinker;
         }
         else {
-            globalLogger(Logger::Color::BrightGreen) << "²»´æÔÚÁÚ½Ó³µµÀ»ò»ñÈ¡ÁÚ½Ó³µµÀĞÅÏ¢Ê§°Ü......";
+            globalLogger(Logger::Color::BrightGreen) << "ä¸å­˜åœ¨é‚»æ¥è½¦é“æˆ–è·å–é‚»æ¥è½¦é“ä¿¡æ¯å¤±è´¥......";
             pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_None;
             return false;
         }
@@ -304,17 +323,17 @@ bool getLaneChangePath(StopLine& stopLine)
 
         double s, t;
         SimOneAPI::GetLaneST(targetLaneID, mainVehicle.pt, s, t);
-        if (std::abs(t) < completeLaneChangeTThres) // ÒÑ¾­µ½´ïÄ¿±ê³µµÀ£¬¹æ»®µ½ÖÕµãµÄ¹ì¼£
+        if (std::abs(t) < completeLaneChangeTThres) // å·²ç»åˆ°è¾¾ç›®æ ‡è½¦é“ï¼Œè§„åˆ’åˆ°ç»ˆç‚¹çš„è½¨è¿¹
         {
             SSD::SimPoint3D destinationPos(initialPath.back());
-            initialPath.clear(); // ¸üĞÂÆğµãºÍÖÕµã
+            initialPath.clear(); // æ›´æ–°èµ·ç‚¹å’Œç»ˆç‚¹
             initialPath.push_back(mainVehicle.pt);
             initialPath.push_back(destinationPos);
 
             targetPath.clear();
             SSD::SimVector<int> validWayPoints;
             if (!SimOneAPI::GenerateRoute(initialPath, validWayPoints, targetPath)) {
-                globalLogger(Logger::Color::BrightMagenta) << "Ê¹ÓÃ A* Éú³ÉÖ÷³µÂ·¾¶¹æ»®Ê§°Ü";
+                globalLogger(Logger::Color::BrightMagenta) << "ä½¿ç”¨ A* ç”Ÿæˆä¸»è½¦è·¯å¾„è§„åˆ’å¤±è´¥";
                 return false;
             }
 
@@ -329,17 +348,17 @@ bool getLaneChangePath(StopLine& stopLine)
     return false;
 }
 
-// ¶ÔÓÚÔË¶¯µÄÍ£Ö¹ÏßµÄ±äµÀ²Ù×÷
+// å¯¹äºè¿åŠ¨çš„åœæ­¢çº¿çš„å˜é“æ“ä½œ
 bool getLaneChangePath(StopLine& stopLine, float velocityPlanar)
 {
     static SSD::SimString targetLaneID = mainVehicle.laneID;
 
     if (!stopLine.isVechicleInSameLane) return false;
 
-    /* ËÙ¶È¹æ»® */
-    // ËÆºõÔİÇÒ»¹²»ĞèÒª½øĞĞËÙ¶È¹æ»®£¿
+    /* é€Ÿåº¦è§„åˆ’ */
+    // ä¼¼ä¹æš‚ä¸”è¿˜ä¸éœ€è¦è¿›è¡Œé€Ÿåº¦è§„åˆ’ï¼Ÿ
 
-    if (stopLine.toVehicleDist < laneChangeDistThres) // ¾àÀëĞ¡ÓÚãĞÖµ£¬¿ªÊ¼±äµÀ
+    if (stopLine.toVehicleDist < laneChangeDistThres) // è·ç¦»å°äºé˜ˆå€¼ï¼Œå¼€å§‹å˜é“
     {
         HDMapStandalone::MLaneInfo laneInfoInit;
         HDMapStandalone::MLaneLink pLink;
@@ -356,7 +375,7 @@ bool getLaneChangePath(StopLine& stopLine, float velocityPlanar)
             pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_RightBlinker;
         }
         else {
-            globalLogger(Logger::Color::BrightGreen) << "²»´æÔÚÁÚ½Ó³µµÀ»ò»ñÈ¡ÁÚ½Ó³µµÀĞÅÏ¢Ê§°Ü......";
+            globalLogger(Logger::Color::BrightGreen) << "ä¸å­˜åœ¨é‚»æ¥è½¦é“æˆ–è·å–é‚»æ¥è½¦é“ä¿¡æ¯å¤±è´¥......";
             pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_None;
             return false;
         }
@@ -366,17 +385,17 @@ bool getLaneChangePath(StopLine& stopLine, float velocityPlanar)
 
         double s, t;
         SimOneAPI::GetLaneST(targetLaneID, mainVehicle.pt, s, t);
-        if (std::abs(t) < completeLaneChangeTThres) // ÒÑ¾­µ½´ïÄ¿±ê³µµÀ£¬¹æ»®µ½ÖÕµãµÄ¹ì¼£
+        if (std::abs(t) < completeLaneChangeTThres) // å·²ç»åˆ°è¾¾ç›®æ ‡è½¦é“ï¼Œè§„åˆ’åˆ°ç»ˆç‚¹çš„è½¨è¿¹
         {
             SSD::SimPoint3D destinationPos(initialPath.back());
-            initialPath.clear(); // ¸üĞÂÆğµãºÍÖÕµã
+            initialPath.clear(); // æ›´æ–°èµ·ç‚¹å’Œç»ˆç‚¹
             initialPath.push_back(mainVehicle.pt);
             initialPath.push_back(destinationPos);
 
             targetPath.clear();
             SSD::SimVector<int> validWayPoints;
             if (!SimOneAPI::GenerateRoute(initialPath, validWayPoints, targetPath)) {
-                globalLogger(Logger::Color::BrightMagenta) << "Ê¹ÓÃ A* Éú³ÉÖ÷³µÂ·¾¶¹æ»®Ê§°Ü";
+                globalLogger(Logger::Color::BrightMagenta) << "ä½¿ç”¨ A* ç”Ÿæˆä¸»è½¦è·¯å¾„è§„åˆ’å¤±è´¥";
                 return false;
             }
 
@@ -391,7 +410,7 @@ bool getLaneChangePath(StopLine& stopLine, float velocityPlanar)
     return false;
 }
 
-//// ¶ÔÓÚÔË¶¯µÄÍ£Ö¹ÏßµÄ±äµÀ²Ù×÷
+//// å¯¹äºè¿åŠ¨çš„åœæ­¢çº¿çš„å˜é“æ“ä½œ
 //bool getLaneChangePath(StopLine& stopLine, float velocityPlanar)
 //{
 //
