@@ -507,10 +507,9 @@ Obstacle::Obstacle(const std::vector<size_t>& index)
                 }
             };
 
-        /*float azimuth = mainVehicle.laneAzimuth;*/
-        SimOne_Data_Obstacle_Entry& getAzimuthObstacle = pObstacle->obstacle[index.at(0)];
-        SSD::SimPoint3D getAzimuthPos = SSD::SimPoint3D(getAzimuthObstacle.posX, getAzimuthObstacle.posY, getAzimuthObstacle.posZ);
-        float azimuth = getLaneAzimuth(getObstacleLaneChecked(getAzimuthPos));
+        // TL/BR由上面的角点函数按主车车道方向定义，合并必须使用同一方向。
+        // 障碍物自身车道方向仍在下方单独查询，不能用它重新解释这些角点。
+        float azimuth = mainVehicle.laneAzimuth;
         findBoundingBox(tlList, brList, minTL, maxBR, azimuth); // 将不同障碍物的 bounding box 合成一个
 
         tl = minTL;

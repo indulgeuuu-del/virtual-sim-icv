@@ -360,7 +360,8 @@ def main():
                     'left_empty','right_empty','prediction_nan','prediction_inf','prediction_growth',
                     'merged_valid','merged_single','merged_empty','merged_near_failed_written','merged_heading_failed',
                     'merged_projection_failed','merged_road_projection_failed','merged_width_failed','merged_failed_partial',
-                    'merged_link_failed','merged_left_empty','merged_right_empty'], 'obstacle_constructor')
+                    'merged_link_failed','merged_left_empty','merged_right_empty']
+                    + [f'axes_{ego}_{lane}' for ego in (0,90,180,270) for lane in (0,90,180,270)], 'obstacle_constructor')
         compile_run(output, ['road_width.cpp'],
                     [f'{kind}_{mode}' for kind in ('road','raw','group') for mode in
                      ('valid','single','failed','partial','unwritten','nan','inf','negative','zero','link_failed')]

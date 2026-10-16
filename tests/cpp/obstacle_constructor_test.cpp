@@ -23,7 +23,14 @@ struct SilentLog { std::ostringstream text; template<class T> SilentLog& operato
 #define LOG silentLog
 namespace SimOneAPI {
 bool GetInertialFromLaneST(const SSD::SimString&,double,double,SSD::SimPoint3D& p,SSD::SimPoint3D& dir) {
-    p={}; dir={1,0,0}; return scenario!="heading_failed";
+    p={}; dir={1,0,0};
+    if(scenario.rfind("axes_",0)==0) {
+        int heading=std::stoi(scenario.substr(scenario.find_last_of('_')+1));
+        if(heading==90) dir={0,1,0};
+        if(heading==180) dir={-1,0,0};
+        if(heading==270) dir={0,-1,0};
+    }
+    return scenario!="heading_failed";
 }
 bool GetLaneST(const SSD::SimString&,const SSD::SimPoint3D& p,double& s,double& t) {
     s=p.x;t=0;return scenario!="projection_failed";
@@ -57,6 +64,26 @@ int main(int argc,char** argv) {
     try {
         if(argc!=2) throw std::runtime_error("missing case");
         scenario=argv[1];
+        if(scenario.rfind("axes_",0)==0) {
+            mainVehicle.laneAzimuth=std::stof(scenario.substr(5));
+            pObstacle->obstacle[0].velX=pObstacle->obstacle[1].velX=0;
+            pObstacle->obstacle[1].posX=2;
+            Obstacle result(std::vector<size_t>{0,1});
+            bool horizontal=mainVehicle.laneAzimuth==0 || mainVehicle.laneAzimuth==180;
+            if(result.width!=(horizontal ? 2 : 4) || result.length!=(horizontal ? 6 : 4)
+                || result.pt.x!=1 || result.pt.y!=0)
+                throw std::runtime_error("merged bounds changed with obstacle lane heading");
+            // All four corners must bound both source boxes in the ego-lane frame.
+            for(size_t i=0;i<2;++i) {
+                auto a=calculateObstacleTL(pObstacle->obstacle[i]);
+                auto b=calculateObstacleBR(pObstacle->obstacle[i]);
+                for(auto p:{a,b})
+                    if(p.x<std::min(result.tl.x,result.br.x) || p.x>std::max(result.tl.x,result.br.x)
+                        || p.y<std::min(result.tl.y,result.br.y) || p.y>std::max(result.tl.y,result.br.y))
+                        throw std::runtime_error("merged bounds exclude source corner");
+            }
+            std::cout<<"PASS";return 0;
+        }
         if(scenario.rfind("merged_",0)==0) {
             scenario=scenario.substr(7);
             std::vector<size_t> indices={0,1};
