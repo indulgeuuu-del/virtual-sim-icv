@@ -178,6 +178,8 @@ def main():
         constructed_follow = read_source(root / 'tests/cpp/constructed_follow_test.cpp')
         integration_parts = {
             '// @CONTROLLER@': sources['TrajectoryControl/src/tools/controller.hpp'],
+            '// @DRIVE@': between(sources['TrajectoryControl/src/core/vehicle.cpp'],
+                'void MainVehicle::drive(void)', '// 清除所有邻域信息').replace('MainVehicle::drive', 'MainVehicleFixture::drive', 1),
             '// @FETCH@': 'bool updateObstacleData(' + sources['TrajectoryControl/src/main.cpp'].split('bool updateObstacleData(', 1)[1],
             '// @NEAREST@': between(obstacle, 'bool calculateNearestObstacle(', '// 找到所有在主车后方'),
             '// @FOLLOWING@': between(obstacle, 'static float calculateFollowingSpeedImpl(', '// 计算超车速度'),
@@ -351,7 +353,8 @@ def main():
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
         compile_run(output, ['constructed_follow.cpp'], ['valid','prediction_nan','prediction_inf','prediction_growth',
                     'near_failed_written','heading_failed','projection_failed','road_projection_failed','width_failed',
-                    'failed_partial','link_failed','left_empty','right_empty','initial','repeated','reverse','send_failure'], 'constructed_follow')
+                    'failed_partial','link_failed','left_empty','right_empty','initial','repeated','reverse','send_failure',
+                    'slide','reverse_slide','speed_cap','steering_nan'], 'constructed_follow')
         compile_run(output, ['constructor.cpp'], ['valid','static','vertical','near_failed_written','heading_failed',
                     'projection_failed','road_projection_failed','width_failed','failed_partial','link_failed',
                     'left_empty','right_empty','prediction_nan','prediction_inf','prediction_growth',

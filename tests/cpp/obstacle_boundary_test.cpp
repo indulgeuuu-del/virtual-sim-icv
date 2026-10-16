@@ -11,6 +11,7 @@ struct SimString { std::string s; SimString(const char* p="lane"):s(p) {} bool E
 // Bounds-checked SDK fixture makes old-code out-of-bounds a test failure, not a crash.
 struct SimPoint3DVector:std::vector<SimPoint3D> {
     using std::vector<SimPoint3D>::vector;
+    SimPoint3D& operator[](size_t i) { return at(i); }
     const SimPoint3D& operator[](size_t i) const { return at(i); }
 };
 }

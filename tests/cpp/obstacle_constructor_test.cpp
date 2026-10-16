@@ -13,8 +13,9 @@ struct GroundTruth { int obstacleSize=2; SimOne_Data_Obstacle_Entry obstacle[2];
 auto pObstacle=std::make_unique<GroundTruth>();
 struct MainVehicleFixture {
     float laneAzimuth=0,speed=3; double s=0; SSD::SimPoint3D pt; SSD::SimString laneID{"lane"};
-    const char* id="0"; bool reverse=false;
-    bool update() { return true; } // Main-vehicle update is covered by the separate input suite.
+    const char* id="0"; bool reverse=false,useDefaultPath=true;
+    float steeringOffset=0;
+    bool update(); // Main-vehicle update is covered by the separate input suite.
     void drive();
 } mainVehicle;
 namespace FlagType { bool isCrosswalkExist=false; }

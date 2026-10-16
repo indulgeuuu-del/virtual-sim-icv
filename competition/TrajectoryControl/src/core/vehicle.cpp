@@ -369,6 +369,8 @@ void MainVehicle::drive(void)
 	if (!std::isfinite(pControl->steering) || !std::isfinite(pControl->throttle))
 	{
 		LOG << "Invalid final control output: requesting stop";
+		// 非有限转向会污染PID历史；清除后才可在有效输入恢复时继续行驶。
+		steerPID.reset();
 		pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
 		pControl->throttle = 0.0f;
 		pControl->steering = 0.0f;
