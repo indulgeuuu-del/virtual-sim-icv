@@ -9,7 +9,10 @@ struct SimOne_Data_Obstacle_Entry {
     float width=2,length=4,velX=1,velY=0,velZ=0,oriZ=0,posX=0,posY=0,posZ=0;
     Prediction prediction;
 };
-struct GroundTruth { int obstacleSize=2; SimOne_Data_Obstacle_Entry obstacle[2]; };
+#ifndef TEST_OBSTACLE_CAPACITY
+#define TEST_OBSTACLE_CAPACITY 2
+#endif
+struct GroundTruth { int obstacleSize=2; SimOne_Data_Obstacle_Entry obstacle[TEST_OBSTACLE_CAPACITY]; };
 auto pObstacle=std::make_unique<GroundTruth>();
 struct MainVehicleFixture {
     float laneAzimuth=0,speed=3; double s=0; SSD::SimPoint3D pt; SSD::SimString laneID{"lane"};

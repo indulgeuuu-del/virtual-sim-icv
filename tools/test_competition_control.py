@@ -128,6 +128,7 @@ def main():
             root / 'tests/cpp/road_width_test.cpp',
             root / 'tests/cpp/obstacle_constructor_test.cpp',
             root / 'tests/cpp/constructed_follow_test.cpp',
+            root / 'tests/cpp/grouped_constructor_test.cpp',
             root / 'tests/cpp/track_speed_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
@@ -175,6 +176,13 @@ def main():
             constructor_fixture = constructor_fixture.replace(marker, code)
         preamble = boundary_harness.replace('// @BOUNDARY@', boundary).split('int main(', 1)[0]
         (output / 'constructor.cpp').write_bytes((preamble + constructor_fixture).encode('utf-8'))
+        grouped = read_source(root / 'tests/cpp/grouped_constructor_test.cpp')
+        grouped = grouped.replace('// @DISTANCE@', between(sources['util/UtilMath.h'],
+            'static double distance(double pt1_x,', 'static double planarDistance('))
+        grouped = grouped.replace('// @GROUPING@', between(obstacle,
+            'void groupObstacleByDist(', 'void groupObstacleByS('))
+        (output / 'grouped_constructor.cpp').write_bytes(('#define TEST_OBSTACLE_CAPACITY 6\n'
+            + preamble + constructor_fixture.split('int main(', 1)[0] + grouped).encode('utf-8'))
         constructed_follow = read_source(root / 'tests/cpp/constructed_follow_test.cpp')
         integration_parts = {
             '// @CONTROLLER@': sources['TrajectoryControl/src/tools/controller.hpp'],
@@ -351,6 +359,8 @@ def main():
                     'passed': result.returncode == 0, 'output': (result.stdout + result.stderr).strip()}
 
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
+        compile_run(output, ['grouped_constructor.cpp'],
+                    ['exact','below','above','chain','sparse','reordered','empty','recovery'], 'grouped_constructor')
         compile_run(output, ['constructed_follow.cpp'], ['valid','prediction_nan','prediction_inf','prediction_growth',
                     'near_failed_written','heading_failed','projection_failed','road_projection_failed','width_failed',
                     'failed_partial','link_failed','left_empty','right_empty','initial','repeated','reverse','send_failure',
