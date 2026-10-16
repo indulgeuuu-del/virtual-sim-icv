@@ -245,58 +245,50 @@ void getObstacleLaneSidePosition(const SSD::SimPoint3D& point, SSD::SimPoint3D& 
 // 可以用 ST 坐标来计算距离来优化这个函数
 void getObstacleRoadSidePosition(const SSD::SimPoint3D& point, SSD::SimPoint3D& leftPoint, SSD::SimPoint3D& rightPoint)
 {
-    SSD::SimString obstacleLaneId = m_SampleGetNearMostLane(point);
-    HDMapStandalone::MLaneInfo obstacleLaneInfo;
+    const auto finitePoint = [](const SSD::SimPoint3D& p) {
+        return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z);
+    };
+    if (!finitePoint(point)) throw std::domain_error("Obstacle road boundary query point is invalid");
+    const SSD::SimString obstacleLaneId = m_SampleGetNearMostLane(point);
+    if (obstacleLaneId.Empty()) throw std::domain_error("Obstacle road lane is unavailable");
 
-    if (!SimOneAPI::GetLaneSample(obstacleLaneId, obstacleLaneInfo)) return;
-
-    const SSD::SimPoint3DVector& midLine = obstacleLaneInfo.centerLine;
-    double minDistTemp = std::numeric_limits<double>::max();
-    int pointIndexTemp = midLine.size();
-
-    // 找到距离障碍物最近的车道中点的索引
-    for (size_t j = 0, je = midLine.size(); j < je; ++j)
-    {
-        double distTemp = UtilMath::planarDistance(midLine[j], point);
-        if (distTemp < minDistTemp)
-        {
-            minDistTemp = distTemp;
-            pointIndexTemp = static_cast<int>(j);
+    const auto findExtremeLane = [&](bool findLeft) {
+        std::set<SSD::SimString> visited;
+        SSD::SimString laneId = obstacleLaneId;
+        while (true) {
+            if (!visited.insert(laneId).second)
+                throw std::domain_error("Obstacle road neighbor chain contains a cycle");
+            HDMapStandalone::MLaneLink link;
+            if (!SimOneAPI::GetLaneLink(laneId, link))
+                throw std::domain_error("Obstacle road neighbor query failed");
+            const SSD::SimString next = findLeft ? link.leftNeighborLaneName : link.rightNeighborLaneName;
+            if (next.Empty()) return laneId;
+            laneId = next;
         }
-    }
-
-    std::set<SSD::SimString> visitedLanes;
-
-    // Lambda 表达式：递归查找最左/最右侧车道
-    auto findExtremeLane = [&](const SSD::SimString& laneId, bool findLeft, auto& findExtremeLaneRef) -> SSD::SimString {
-        if (visitedLanes.count(laneId) > 0) return laneId;
-        visitedLanes.insert(laneId);
-
-        HDMapStandalone::MLaneLink link;
-        if (SimOneAPI::GetLaneLink(laneId, link)) {
-            SSD::SimString nextLane = findLeft ? link.leftNeighborLaneName : link.rightNeighborLaneName;
-            if (!nextLane.Empty()) {
-                return findExtremeLaneRef(nextLane, findLeft, findExtremeLaneRef);
-            }
+    };
+    const SSD::SimString leftLane = findExtremeLane(true);
+    const SSD::SimString rightLane = findExtremeLane(false);
+    const auto boundaryPoint = [&](const SSD::SimString& lane, bool left) {
+        HDMapStandalone::MLaneInfo info;
+        if (!SimOneAPI::GetLaneSample(lane, info))
+            throw std::domain_error("Obstacle road boundary sample failed");
+        const auto& line = left ? info.leftBoundary : info.rightBoundary;
+        if (line.size() == 0) throw std::domain_error("Obstacle road boundary is empty");
+        size_t index = 0;
+        double minDistance = std::numeric_limits<double>::infinity();
+        for (size_t j = 0; j < line.size(); ++j) {
+            if (!finitePoint(line[j])) throw std::domain_error("Obstacle road boundary point is invalid");
+            const double distance = UtilMath::planarDistance(line[j], point);
+            if (!std::isfinite(distance)) throw std::domain_error("Obstacle road boundary distance is invalid");
+            if (distance < minDistance) { minDistance = distance; index = j; }
         }
-        return laneId;
-        };
-
-    // 查找最左和最右的车道
-    SSD::SimString leftExtremeLane = findExtremeLane(obstacleLaneId, true, findExtremeLane);
-    SSD::SimString rightExtremeLane = findExtremeLane(obstacleLaneId, false, findExtremeLane);
-
-    // 获取最左侧车道的左边界点
-    HDMapStandalone::MLaneInfo leftLaneInfo;
-    if (SimOneAPI::GetLaneSample(leftExtremeLane, leftLaneInfo)) {
-        leftPoint = leftLaneInfo.leftBoundary[pointIndexTemp];
-    }
-
-    // 获取最右侧车道的右边界点
-    HDMapStandalone::MLaneInfo rightLaneInfo;
-    if (SimOneAPI::GetLaneSample(rightExtremeLane, rightLaneInfo)) {
-        rightPoint = rightLaneInfo.rightBoundary[pointIndexTemp];
-    }
+        return line[index];
+    };
+    // 各边界独立选点，不假设不同车道的采样索引对应；全部成功才写回。
+    const auto newLeft = boundaryPoint(leftLane, true);
+    const auto newRight = boundaryPoint(rightLane, false);
+    leftPoint = newLeft;
+    rightPoint = newRight;
 }
 
 bool isObstacleAmongCrosswalk(const SSD::SimPoint3D& tl, const SSD::SimPoint3D& tr, const SSD::SimPoint3D& bl, const SSD::SimPoint3D& br, const SSD::SimPoint3D& vertex1, const SSD::SimPoint3D& vertex2)
