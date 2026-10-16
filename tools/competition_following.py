@@ -8,6 +8,7 @@ import hashlib
 import json
 import math
 import os
+import operator
 from pathlib import Path
 import struct
 import subprocess
@@ -32,6 +33,17 @@ def extract(text, start, end):
         raise ValueError('Production function boundary changed; review bridge extraction')
     begin = text.index(start)
     return text[begin:text.index(end, begin)]
+
+
+def checked_integer(value, minimum, maximum, field):
+    """Check before ctypes can silently truncate an integer to C int."""
+    try:
+        integer = operator.index(value)
+    except TypeError as exc:
+        raise ValueError(f'{field} must be an integer') from exc
+    if not minimum <= integer <= maximum:
+        raise ValueError(f'{field} outside supported range {minimum}..{maximum}')
+    return integer
 
 
 def build_library():
@@ -158,6 +170,7 @@ class FollowingController:
             raise RuntimeError('Following controller is closed')
         if len(obstacles) > 10000:
             raise ValueError('Too many obstacles for the bridge')
+        case_index = checked_integer(case_index, -(2**31), 2**31-1, 'case_index')
         if static_reference_offset is not None and (not math.isfinite(static_reference_offset) or static_reference_offset < 0):
             raise ValueError('Static reference offset must be finite and nonnegative')
         policy_values = (0.0, 0.0, 0.0)
@@ -169,7 +182,16 @@ class FollowingController:
             if (not all(math.isfinite(v) for v in policy_values) or policy_values[0] <= 0
                     or policy_values[1] <= 0 or policy_values[2] < 0):
                 raise ValueError('Policy gaps must be positive and ceiling nonnegative; all must be finite')
-        data = (_Input * len(obstacles))(*(_Input(*item) for item in obstacles))
+        inputs = []
+        for item in obstacles:
+            if len(item) != 5:
+                raise ValueError('Each obstacle requires exactly five fields: s, speed, type, same_lane, same_road')
+            s, speed, kind, same_lane, same_road = item
+            inputs.append(_Input(s, speed,
+                checked_integer(kind, 0, 3, 'obstacle type'),
+                checked_integer(same_lane, 0, 1, 'same_lane'),
+                checked_integer(same_road, 0, 1, 'same_road')))
+        data = (_Input * len(inputs))(*inputs)
         result = _Output()
         if not self._dll.following_step(self._handle, ego_s, ego_speed, data, len(data), case_index,
                 static_reference_offset is not None, static_reference_offset or 0,

@@ -5,6 +5,32 @@ from tools.competition_following import FollowingController, extract
 
 
 class FollowingTests(unittest.TestCase):
+    def test_incomplete_obstacles_are_rejected_instead_of_zero_filled(self):
+        c = self.controller()
+        for item in ((), (6,), (6,0), (6,0,0), (6,0,0,1), (6,0,0,1,1,99)):
+            with self.subTest(item=item), self.assertRaises(ValueError):
+                c.step(0,3,[item])
+
+    def test_integer_fields_cannot_wrap_into_other_semantics(self):
+        c = self.controller()
+        for item in ((6,0,2**32,1,1), (6,0,0,2**32,1), (6,0,0,1,2**32),
+                     (6,0,0,-1,1), (6,0,0,1,2), (6,0,0,1.0,1)):
+            with self.subTest(item=item), self.assertRaises(ValueError):
+                c.step(0,3,[item])
+        for index in (2**32+2, -(2**31)-1, 2.0):
+            with self.subTest(index=index), self.assertRaises(ValueError):
+                c.step(0,3,[],case_index=index)
+
+    def test_malformed_observation_resets_history_and_valid_flags_still_work(self):
+        c = self.stateful_controller()
+        policy = dict(moving_gap_m=50,stopped_gap_m=2,max_speed_mps=8)
+        for _ in range(4):
+            c.step(0,3,[(45,3,2,1,1)],static_reference_offset=5,policy=policy)
+        with self.assertRaises(ValueError):
+            c.step(0,0,[(55,3)],static_reference_offset=5,policy=policy)
+        self.assertEqual(c.step(0,0,[(55,3,2,True,True)],static_reference_offset=5,policy=policy)['target_speed'],3)
+        self.assertIsNone(c.step(0,0,[(55,3,2,False,True)],static_reference_offset=5,policy=policy)['selected_s'])
+
     def test_policy_standstill_at_requested_gap_does_not_restart(self):
         c = self.controller()
         for gap in (1.99, 2.0):
