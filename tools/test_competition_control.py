@@ -123,6 +123,7 @@ def main():
             root / 'tests/cpp/lane_distance_test.cpp',
             root / 'tests/cpp/lateral_gap_test.cpp',
             root / 'tests/cpp/traffic_light_test.cpp',
+            root / 'tests/cpp/obstacle_boundary_test.cpp',
             root / 'tests/cpp/track_speed_support.cpp',
             root / 'tests/cpp/obstacle_geometry_test.cpp', root / 'tools/test_competition_manual.py',
         ]
@@ -133,6 +134,9 @@ def main():
         report['production_revision'] = revision or 'working-tree'
         report['git_head'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
         obstacle = sources['TrajectoryControl/src/core/obstacle.cpp']
+        boundary = between(obstacle, 'void getObstacleLaneSidePosition(', '// 可以用 ST 坐标')
+        boundary_harness = read_source(root / 'tests/cpp/obstacle_boundary_test.cpp')
+        (output / 'boundary.cpp').write_bytes(boundary_harness.replace('// @BOUNDARY@', boundary).encode('utf-8'))
         corners = between(obstacle, 'SSD::SimPoint3D calculateObstacleTL(', 'void groupObstacleByDist(')
         merge = between(obstacle, '        std::vector<SSD::SimPoint3D> tlList, brList;',
                         '        laneID = m_SampleGetNearMostLane(pt);')
@@ -292,6 +296,8 @@ def main():
                     'passed': result.returncode == 0, 'output': (result.stdout + result.stderr).strip()}
 
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
+        compile_run(output, ['boundary.cpp'], ['valid','empty_lane','failed_partial','left_empty',
+                    'right_empty','nan','inf','all_nan','point_nan'], 'obstacle_boundary')
         compile_run(output, ['gps_gate.cpp'], ['initial_failure', 'late_failure', 'transient_failure',
                                               'success', 'recovery'], 'gps_gate')
         compile_run(output, ['navigation.cpp'], ['waypoint_failure', 'zero_waypoints', 'route_failure',

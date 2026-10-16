@@ -212,38 +212,34 @@ void groupObstacleByS(const std::vector<Obstacle>& obstacleList, const std::vect
 
 void getObstacleLaneSidePosition(const SSD::SimPoint3D& point, SSD::SimPoint3D& leftPoint, SSD::SimPoint3D& rightPoint)
 {
+    const auto finitePoint = [](const SSD::SimPoint3D& p) {
+        return std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z);
+    };
+    if (!finitePoint(point)) throw std::domain_error("Obstacle boundary query point is invalid");
     SSD::SimString obstacleLaneId = m_SampleGetNearMostLane(point);
     HDMapStandalone::MLaneInfo obstacleLaneInfo;
-    SimOneAPI::GetLaneSample(obstacleLaneId, obstacleLaneInfo);
+    if (obstacleLaneId.Empty() || !SimOneAPI::GetLaneSample(obstacleLaneId, obstacleLaneInfo))
+        throw std::domain_error("Obstacle lane boundaries unavailable");
     const SSD::SimPoint3DVector& leftLine = obstacleLaneInfo.leftBoundary;
     const SSD::SimPoint3DVector& rightLine = obstacleLaneInfo.rightBoundary;
 
-    double minDistL = std::numeric_limits<double>::max();
-    int pointIndexL = leftLine.size();
-    for (size_t j = 0, je = leftLine.size(); j < je; ++j)
-    {
-        double distTemp = UtilMath::planarDistance(leftLine[j], point);
-        if (distTemp < minDistL)
-        {
-            minDistL = distTemp;
-            pointIndexL = (int)j;
+    const auto nearest = [&](const SSD::SimPoint3DVector& line) {
+        if (line.size() == 0) throw std::domain_error("Obstacle lane boundary is empty");
+        double minDistance = std::numeric_limits<double>::infinity();
+        size_t index = 0;
+        for (size_t j = 0; j < line.size(); ++j) {
+            if (!finitePoint(line[j])) throw std::domain_error("Obstacle lane boundary contains invalid point");
+            const double distance = UtilMath::planarDistance(line[j], point);
+            if (!std::isfinite(distance)) throw std::domain_error("Obstacle boundary distance is invalid");
+            if (distance < minDistance) { minDistance = distance; index = j; }
         }
-    }
-
-    double minDistR = std::numeric_limits<double>::max();
-    int pointIndexR = rightLine.size();
-    for (size_t j = 0, je = rightLine.size(); j < je; ++j)
-    {
-        double distTemp = UtilMath::planarDistance(rightLine[j], point);
-        if (distTemp < minDistR)
-        {
-            minDistR = distTemp;
-            pointIndexR = (int)j;
-        }
-    }
-
-    leftPoint = leftLine[pointIndexL];
-    rightPoint = rightLine[pointIndexR];
+        return line[index];
+    };
+    // 两侧均有效后才写回，避免右侧失败留下半套新结果。
+    const auto newLeft = nearest(leftLine);
+    const auto newRight = nearest(rightLine);
+    leftPoint = newLeft;
+    rightPoint = newRight;
 }
 
 // 可以用 ST 坐标来计算距离来优化这个函数
