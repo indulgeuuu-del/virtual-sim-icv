@@ -10,6 +10,7 @@ import json
 import math
 from pathlib import Path
 import subprocess
+import time
 
 if __package__:
     from .competition_stopline import StopLineController
@@ -47,6 +48,8 @@ def main():
     p.add_argument('--distance', type=float, default=60, help='Initial vehicle reference point to fixed line, m')
     p.add_argument('--fixed-delta-seconds', type=float, default=0.05)
     p.add_argument('--seconds', type=float, default=45)
+    p.add_argument('--no-realtime', action='store_true', help='Run as fast as the server allows')
+    p.add_argument('--no-follow-camera', action='store_true', help='Leave the spectator camera under manual control')
     p.add_argument('--output', type=Path, default=Path('work/carla/stopline-baseline'))
     a = p.parse_args()
     if not all(math.isfinite(v) for v in (a.speed_kmh,a.distance,a.fixed_delta_seconds,a.seconds)) or not (0<a.speed_kmh<=50 and a.distance>10 and 0<a.fixed_delta_seconds<=0.1 and a.seconds>5):
@@ -57,7 +60,7 @@ def main():
         p.error('Output already contains a report; choose a new --output')
     controller=StopLineController();steering=SteeringController();pedals=PISpeedActuators()
     client=carla.Client(a.host,a.port);client.set_timeout(30)
-    world=None;original=None;actors=[];rows=[];collisions=[];cleanup=[]
+    world=None;original=None;spectator=None;original_view=None;actors=[];rows=[];collisions=[];cleanup=[]
     report=dict(passed=False, sdk_verified=False, official_score_verified=False,
         source_build=controller.build, steering_build=steering.build,
         git_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).resolve().parents[1],text=True).strip(),
@@ -97,6 +100,17 @@ def main():
         ego.apply_control(carla.VehicleControl(brake=1,manual_gear_shift=True,gear=1))
         for _ in range(20): world.tick(20)
         origin=ego.get_location();axis=(forward.x,forward.y)
+        if not a.no_follow_camera:
+            spectator=world.get_spectator();original_view=spectator.get_transform()
+
+        def follow_camera():
+            if spectator is not None:
+                pose=ego.get_transform();direction=pose.get_forward_vector()
+                spectator.set_transform(carla.Transform(
+                    carla.Location(pose.location.x-10*direction.x,pose.location.y-10*direction.y,pose.location.z+6),
+                    carla.Rotation(pitch=-25,yaw=pose.rotation.yaw)))
+
+        follow_camera()
         line=(origin.x+axis[0]*a.distance,origin.y+axis[1]*a.distance)
         formal_path=[(q.transform.location.x,-q.transform.location.y,q.transform.location.z) for q in path]
         report.update(platform=client.get_server_version(),map=road.name,vehicle=ego.type_id,
@@ -104,7 +118,16 @@ def main():
             legacy_front_offset_m=4.38046,margin_m=controller.margin)
         world.debug.draw_line(carla.Location(line[0]-axis[1]*2,line[1]+axis[0]*2,origin.z),
             carla.Location(line[0]+axis[1]*2,line[1]-axis[0]*2,origin.z),thickness=0.1,color=carla.Color(255,0,0),life_time=a.seconds)
+        print(f'CARLA: {a.seconds:g}s simulation, '
+              f'{"fast" if a.no_realtime else "real-time"}, '
+              f'{"manual camera" if a.no_follow_camera else "following camera"}. '
+              'Actors and camera will be restored at the end. Ctrl+C stops the experiment.',flush=True)
+        if not a.no_realtime:
+            print('Starting in 3 seconds; switch to the CARLA window.',flush=True)
+            time.sleep(3)
+        playback_started=time.monotonic()
         for _ in range(math.ceil(a.seconds/a.fixed_delta_seconds)):
+            frame_started=time.monotonic()
             snapshot=world.get_snapshot();pose=ego.get_transform();location=pose.location
             speed=ego.get_velocity().length()
             reference=(line[0]-location.x)*axis[0]+(line[1]-location.y)*axis[1]
@@ -121,11 +144,20 @@ def main():
                 throttle=throttle,brake=brake,steering=steer,lateral_m=lateral))
             ego.apply_control(carla.VehicleControl(throttle=throttle,brake=brake,steer=max(-1,min(1,steer)),manual_gear_shift=True,gear=1))
             world.tick(20)
+            follow_camera()
+            if not a.no_realtime:
+                time.sleep(max(0.0,a.fixed_delta_seconds-(time.monotonic()-frame_started)))
+        report['playback_wall_seconds']=time.monotonic()-playback_started
         report.update(assessment=assess(rows,collisions))
         report['passed']=report['assessment']['passed']
+    except KeyboardInterrupt:
+        report['error']='Interrupted by user'
     except Exception as e:
         report['error']=f'{type(e).__name__}: {e}'
     finally:
+        if spectator is not None and original_view is not None:
+            try: spectator.set_transform(original_view)
+            except Exception as e: cleanup.append(f'camera restore: {e}')
         for actor in reversed(actors):
             try:
                 if actor.type_id.startswith('sensor.'): actor.stop()
