@@ -142,6 +142,16 @@ bool updateObstacleData(int timeoutFrames)
 			globalLogger(Logger::Color::BrightMagenta) << "障碍物数量超出数组范围，不能使用本帧数据";
 			return false;
 		}
+		for (size_t i = 0; i < static_cast<size_t>(pObstacle->obstacleSize); ++i) {
+			const auto& obstacle = pObstacle->obstacle[i];
+			// 无效对象不能被丢弃后当作道路畅通；让调用方执行整帧停车保护。
+			if (!std::isfinite(obstacle.posX) || !std::isfinite(obstacle.posY) || !std::isfinite(obstacle.posZ)
+				|| !std::isfinite(obstacle.velX) || !std::isfinite(obstacle.velY) || !std::isfinite(obstacle.velZ)
+				|| !std::isfinite(obstacle.oriZ) || !std::isfinite(obstacle.width) || !std::isfinite(obstacle.length)) {
+				globalLogger(Logger::Color::BrightMagenta) << "障碍物位置、速度、朝向或尺寸含非有限值，不能使用本帧数据；索引=" << i;
+				return false;
+			}
+		}
 		if (!FlagType::isObstacleInitialized)
 		{
 			FlagType::isObstacleInitialized = true;

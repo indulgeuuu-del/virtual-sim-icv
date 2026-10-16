@@ -55,7 +55,10 @@ struct Control {
 };
 struct Light { int signalLights=0; };
 struct Gps { double posX=10,posY=20,posZ=0; float velX=3,velY=0,oriX=0,oriY=0,oriZ=0; };
-struct RawObstacle { double s=100; };
+struct RawObstacle {
+    double s=100;
+    float posX=100,posY=0,posZ=0,velX=1,velY=0,velZ=0,oriZ=0,width=2,length=4;
+};
 struct GroundTruth { int obstacleSize=1; RawObstacle obstacle[2]; };
 inline auto pControl=std::make_unique<Control>();
 inline auto pLight=std::make_unique<Light>();
@@ -75,6 +78,7 @@ struct Timer { void tic() {} double get() const { return 0.1; } };
 inline Timer timer;
 inline float calculateFps(int,double) { return 10; }
 struct Input { bool gps=true, obstacle=true, send=true; int count=1; bool route=true;
+    int rawField=0, rawIndex=0; float rawValue=100;
     bool near=true, projection=true, emptyLane=false, finiteProjection=true, finitePosition=true;
     bool heading=true,finiteHeading=true,zeroHeading=false,link=true,clearLink=false;
     bool badRoad=false,largeRoad=false,ambiguous=false,noNeighbors=false,noSuccessors=false,junctionOnly=false;
@@ -143,7 +147,12 @@ inline bool GetGroundTruth(const char*, GroundTruth* out) {
         if(clearFailedOutput) *out=GroundTruth{0};
         return false;
     }
-    out->obstacleSize=current().count; return true;
+    *out=GroundTruth{};
+    out->obstacleSize=current().count;
+    auto& raw=out->obstacle[current().rawIndex];
+    float* fields[]={&raw.posX,&raw.posY,&raw.posZ,&raw.velX,&raw.velY,&raw.velZ,&raw.oriZ,&raw.width,&raw.length};
+    *fields[current().rawField]=current().rawValue;
+    return true;
 }
 inline bool SetDrive(const char*, Control* control) {
     sends.push_back(*control); return current().send;

@@ -18,6 +18,12 @@ import subprocess
 from test_competition_manual import read_source
 
 
+RAW_OBSTACLE_TESTS = [
+    f'raw_{field}_{kind}'
+    for field in ('posX', 'posY', 'posZ', 'velX', 'velY', 'velZ', 'oriZ', 'width', 'length')
+    for kind in ('nan', 'inf', 'neginf')
+] + ['raw_initial', 'raw_repeated', 'raw_second', 'raw_unused', 'raw_signed']
+
 LOOP_TESTS = (
     'empty', 'defaults', 'explicit', 'interpolation', 'transition',
     'transition_parameters', 'first_route_failure', 'interpolation_failure',
@@ -290,7 +296,7 @@ def main():
                      'map_initial','map_repeated','heading_failed','heading_nonfinite','heading_zero',
                      'link_partial','link_cleared','link_initial','link_repeated','road_invalid','road_overflow',
                      'successor_ambiguous','link_empty_valid','junction_valid',
-                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'], 'follow_input')
+                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'] + RAW_OBSTACLE_TESTS, 'follow_input')
         compile_run(follow_dir, ['track_prefix.cpp', 'support.cpp', 'test.cpp'],
                     ['gps_initial', 'obstacle_initial', 'gps_transient', 'obstacle_stale',
                      'obstacle_cleared', 'both_failed', 'send_failure', 'empty_valid',
@@ -299,7 +305,7 @@ def main():
                      'map_initial','map_repeated','heading_failed','heading_nonfinite','heading_zero',
                      'link_partial','link_cleared','link_initial','link_repeated','road_invalid','road_overflow',
                      'successor_ambiguous','link_empty_valid','junction_valid',
-                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'], 'track_input', ['/DTEST_TRACK_PREFIX'])
+                     'count_negative','count_overflow','count_extreme','count_initial','count_repeated','count_capacity'] + RAW_OBSTACLE_TESTS, 'track_input', ['/DTEST_TRACK_PREFIX'])
         report['passed'] = bool(report['tests']) and all(t['passed'] for t in report['tests'].values())
     except (OSError, ValueError, IndexError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
         report['error'] = f'{type(error).__name__}: {error}'

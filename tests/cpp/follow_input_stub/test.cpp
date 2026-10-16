@@ -5,7 +5,29 @@ int main(int argc,char** argv) {
         require(argc==2,"test name required");
         const std::string name=argv[1];
         inputs={{},{},{}};
-        if(name=="count_negative") inputs[1].count=-1;
+        if(name.rfind("raw_",0)==0) {
+            const float nan=std::numeric_limits<float>::quiet_NaN();
+            if(name=="raw_initial") { inputs[0].rawValue=nan; }
+            else if(name=="raw_repeated") { inputs[0].rawValue=nan; inputs[1].rawValue=nan; }
+            else if(name=="raw_second") { inputs[1].count=2; inputs[1].rawIndex=1; inputs[1].rawValue=nan; }
+            else if(name=="raw_unused") { inputs[1].rawIndex=1; inputs[1].rawValue=nan; }
+            else if(name=="raw_signed") { for(auto& a:inputs) { a.rawField=3; a.rawValue=-2; } }
+            else {
+                const std::string fields[]={"posX","posY","posZ","velX","velY","velZ","oriZ","width","length"};
+                bool found=false;
+                for(int i=0;i<9;++i) {
+                    for(const auto& kind: {std::string("nan"),std::string("inf"),std::string("neginf")}) {
+                        if(name=="raw_"+fields[i]+"_"+kind) {
+                            inputs[1].rawField=i;
+                            inputs[1].rawValue=kind=="nan" ? nan : (kind=="inf" ? 1 : -1)*std::numeric_limits<float>::infinity();
+                            found=true;
+                        }
+                    }
+                }
+                require(found,"unknown raw test");
+            }
+        }
+        else if(name=="count_negative") inputs[1].count=-1;
         else if(name=="count_overflow") inputs[1].count=3;
         else if(name=="count_extreme") inputs[1].count=2147483647;
         else if(name=="count_initial") inputs[0].count=-1;
@@ -52,6 +74,12 @@ int main(int argc,char** argv) {
             waits=0; obstacleReads=0;
             FlagType::isObstacleInitialized=false;
         }
+        if(name.rfind("raw_",0)==0 && name!="raw_unused" && name!="raw_signed") {
+            waits=name=="raw_initial" || name=="raw_repeated" ? 1 : 2;
+            require(!updateObstacleData(),"successful SDK read accepted nonfinite obstacle field");
+            waits=0; obstacleReads=0;
+            FlagType::isObstacleInitialized=false;
+        }
         try {
 #ifdef TEST_TRACK_PREFIX
             main_track();
@@ -65,7 +93,8 @@ int main(int argc,char** argv) {
         int expectedDrives=0;
         for(size_t i=0;i<inputs.size();++i) {
             const auto& input=inputs[i];
-            if(input.gps && input.obstacle && input.count>=0 && input.count<=2 && input.route && mapValid(input)) {
+            const bool rawValid=input.rawIndex>=input.count || std::isfinite(input.rawValue);
+            if(input.gps && input.obstacle && input.count>=0 && input.count<=2 && rawValid && input.route && mapValid(input)) {
                 ++expectedDrives;
                 require(sends[i].throttle>0,"fresh input failed to resume");
             } else {
