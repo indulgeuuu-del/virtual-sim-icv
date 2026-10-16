@@ -7,6 +7,7 @@
 #include <new>
 #include <vector>
 #include "controller.hpp"
+#include "SpeedRiseLimiter.h"
 
 struct Obstacle {
     enum class Type { Static, Vertical, Horizental, AmongCrosswalk };
@@ -27,6 +28,7 @@ AdaptiveFollowing adaptiveFollowing(0, 0, 0, 45);
 
 struct Context {
     AdaptiveFollowing following;
+    SpeedRiseLimiter rise;
     float minimum;
     int stopCase;
     Context(float kp, float ki, float kd, float limit, int stop)
@@ -47,7 +49,16 @@ API int following_reset(void* p) {
     if (!p) return 0;
     const std::lock_guard<std::mutex> lock(boundaryMutex);
     static_cast<Context*>(p)->following.reset();
+    static_cast<Context*>(p)->rise.reset();
     return 1;
+}
+API int following_limit_rise(void* p, int enabled, double requested, double measured,
+                             double time, double rate, double* output) {
+    if (!p || !output) return 0;
+    const std::lock_guard<std::mutex> lock(boundaryMutex);
+    auto& rise = static_cast<Context*>(p)->rise;
+    if (!enabled) { rise.reset(); *output = requested; return 1; }
+    return rise.update(requested, measured, time, rate, *output) ? 1 : 0;
 }
 API int following_step(void* p, double egoS, double egoSpeed, const Input* input,
                        int count, int caseIndex, int useGeometry, double staticOffset,

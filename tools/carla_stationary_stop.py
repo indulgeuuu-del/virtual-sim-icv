@@ -127,6 +127,8 @@ def parse_args():
                         help='Production following code by default; experimental retains the old Python planner')
     parser.add_argument('--following-policy', choices=('scenario', 'legacy'),
                         help='Default scenario for lead-brake, otherwise legacy; legacy reproduces old 45m reference target')
+    parser.add_argument('--max-target-rise', type=float,
+                        help='Target speed rise in m/s per simulation second: default 1 for scenario policy; 0 disables for comparison')
     parser.add_argument('--speed-kmh', type=float, help='Default 30 for lead-brake; otherwise 10')
     parser.add_argument('--gap', type=float, help='Initial body gap in m; default 50 for lead-brake, otherwise 25')
     parser.add_argument('--stop-gap', type=float, default=2.0, help='Desired final body gap in m')
@@ -152,6 +154,12 @@ def parse_args():
         args.gap = 50.0 if args.scenario == 'lead-brake' else 25.0
     if args.following_policy is None:
         args.following_policy = 'scenario' if args.scenario == 'lead-brake' else 'legacy'
+    if args.max_target_rise is None:
+        args.max_target_rise = 1.0 if args.following_policy == 'scenario' else 0.0
+    if not math.isfinite(args.max_target_rise) or args.max_target_rise < 0:
+        parser.error('--max-target-rise must be finite and nonnegative')
+    if args.max_target_rise > 0 and args.following_policy != 'scenario':
+        parser.error('--max-target-rise requires explicit scenario policy')
     if args.following_policy == 'scenario' and (args.scenario != 'lead-brake' or args.distance_geometry != 'body'):
         parser.error('Explicit scenario policy currently requires lead-brake and measured body geometry')
     if not all(math.isfinite(v) for v in (args.speed_kmh, args.gap, args.stop_gap, args.timeout,
@@ -194,6 +202,8 @@ def run(args):
     report = dict(passed=False, competition_verified=False, input_source='CARLA ground truth',
                   parameters={k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
                   source_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest())
+    report['target_rise_limit'] = dict(enabled=args.max_target_rise > 0, rate_mps2=args.max_target_rise,
+        max_observation_interval_s=0.25, scope='engineering request ramp, not measured acceleration or official scoring')
     client = carla.Client('127.0.0.1', 2000)
     client.set_timeout(10.0)
     try:
@@ -415,7 +425,9 @@ def run(args):
             if following is not None:
                 formal = following.step(0, state['speed_mps'],
                         [(state['longitudinal_origin_distance_m'], lead_speed, 0 if lead_speed < 0.01 else 2, 1, 1)],
-                        case_index=report['case_index'], static_reference_offset=geometry_offset, policy=policy)
+                        case_index=report['case_index'], static_reference_offset=geometry_offset, policy=policy,
+                        timestamp=state['time'] if args.max_target_rise > 0 else None,
+                        max_speed_rise=args.max_target_rise if args.max_target_rise > 0 else None)
                 target = formal['target_speed']
                 throttle, brake = speed_actuators(target, state['speed_mps'])
             else:
@@ -448,6 +460,7 @@ def run(args):
                              pursuit_raw=lateral['raw'] if lateral else '',
                              pursuit_target_index=lateral['target_index'] if lateral else '',
                              formal_target_speed_mps=formal['target_speed'] if formal else '',
+                             formal_raw_target_speed_mps=formal.get('raw_target_speed',formal['target_speed']) if formal else '',
                              formal_selected_s=formal['selected_s'] if formal else '',
                              stop_phase=stop.phase, controller_held_seconds=stop.held_seconds,
                              dwell_ready=stop.ready, result_time=result['time'],

@@ -5,6 +5,55 @@ from tools.competition_following import FollowingController, extract
 
 
 class FollowingTests(unittest.TestCase):
+    def timed_step(self, controller, time, lead_speed=0, gap=20, ego_speed=0, rate=1):
+        return controller.step(0,ego_speed,[(gap+5,lead_speed,0 if lead_speed<0.01 else 2,1,1)],
+            static_reference_offset=5,policy=dict(moving_gap_m=50,stopped_gap_m=2,max_speed_mps=8),
+            timestamp=time,max_speed_rise=rate)
+
+    def test_timed_classification_switch_limits_rise_by_elapsed_time(self):
+        for dt in (0.02,0.05,0.1):
+            c=self.controller()
+            self.assertEqual(self.timed_step(c,0,0.011)['target_speed'],0)
+            result=self.timed_step(c,dt,0.009)
+            self.assertEqual(result['raw_target_speed'],3)
+            self.assertAlmostEqual(result['target_speed'],dt)
+            for i in range(2,round(3/dt)+1):
+                result=self.timed_step(c,i*dt)
+            self.assertAlmostEqual(result['target_speed'],3,places=6)
+
+    def test_timed_stop_is_immediate_and_duplicate_time_cannot_accelerate(self):
+        c=self.controller()
+        self.assertEqual(self.timed_step(c,0,ego_speed=3)['target_speed'],3)
+        self.assertEqual(self.timed_step(c,0.05,gap=1.9,ego_speed=3)['target_speed'],0)
+        for _ in range(5):
+            self.assertEqual(self.timed_step(c,0.05)['target_speed'],0)
+        self.assertAlmostEqual(self.timed_step(c,0.15)['target_speed'],0.1)
+
+    def test_timed_invalid_clock_and_input_reset_before_recovery(self):
+        for time,rate in ((0.9,1),(1.3,1),(math.nan,1),(-1,1),(1.1,0),(1.1,math.inf)):
+            c=self.controller()
+            self.timed_step(c,1,ego_speed=3)
+            with self.assertRaises(ValueError):
+                self.timed_step(c,time,rate=rate)
+            self.assertEqual(self.timed_step(c,2)['target_speed'],0)
+            self.assertAlmostEqual(self.timed_step(c,2.1)['target_speed'],0.1)
+
+    def test_timed_first_frame_and_reset_do_not_grant_unobserved_acceleration(self):
+        a,b=self.controller(),self.controller()
+        self.assertEqual(self.timed_step(a,0)['target_speed'],0)
+        self.assertEqual(self.timed_step(b,0,ego_speed=3)['target_speed'],3)
+        a.reset()
+        self.assertEqual(self.timed_step(a,100)['target_speed'],0)
+        self.assertEqual(self.timed_step(b,0.25)['target_speed'],3)
+        a.step(0,0,[])  # Switching to the old untimed interface clears ramp history.
+        self.assertEqual(self.timed_step(a,200)['target_speed'],0)
+
+    def test_timed_interface_requires_explicit_policy_and_complete_clock(self):
+        c=self.controller()
+        for options in (dict(timestamp=0),dict(max_speed_rise=1),dict(timestamp=0,max_speed_rise=1)):
+            with self.subTest(options=options), self.assertRaises(ValueError):
+                c.step(0,0,[],**options)
+
     def test_incomplete_obstacles_are_rejected_instead_of_zero_filled(self):
         c = self.controller()
         for item in ((), (6,), (6,0), (6,0,0), (6,0,0,1), (6,0,0,1,1,99)):

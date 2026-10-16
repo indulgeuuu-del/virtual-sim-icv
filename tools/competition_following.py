@@ -16,7 +16,8 @@ import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ('competition/TrajectoryControl/src/core/obstacle.cpp',
            'competition/TrajectoryControl/src/tools/controller.hpp',
-           'tools/native/following_bridge.cpp', 'tools/competition_following.py')
+           'tools/native/following_bridge.cpp', 'tools/competition_following.py',
+           'competition/util/SpeedRiseLimiter.h')
 PARAM = ROOT / 'competition/TrajectoryControl/param.json'
 
 
@@ -71,6 +72,7 @@ def build_library():
     output.mkdir(parents=True, exist_ok=True)
     (output / 'bridge.cpp').write_bytes(bridge.encode('utf-8'))
     (output / 'controller.hpp').write_bytes(read_source(raw[SOURCES[1]]).encode('utf-8'))
+    (output / 'SpeedRiseLimiter.h').write_bytes(raw['competition/util/SpeedRiseLimiter.h'])
     vswhere = Path(os.environ.get('ProgramFiles(x86)', 'C:/Program Files (x86)')) / 'Microsoft Visual Studio/Installer/vswhere.exe'
     install = subprocess.check_output([str(vswhere), '-latest', '-products', '*', '-requires',
               'Microsoft.VisualStudio.Component.VC.Tools.x86.x64', '-property', 'installationPath'], text=True).strip()
@@ -128,6 +130,8 @@ class FollowingController:
         self._dll.following_destroy.restype = None
         self._dll.following_reset.argtypes = [ctypes.c_void_p]
         self._dll.following_reset.restype = ctypes.c_int
+        self._dll.following_limit_rise.argtypes = [ctypes.c_void_p, ctypes.c_int] + [ctypes.c_double]*4 + [ctypes.POINTER(ctypes.c_double)]
+        self._dll.following_limit_rise.restype = ctypes.c_int
         self._dll.following_step.argtypes = [ctypes.c_void_p, ctypes.c_double, ctypes.c_double,
                 ctypes.POINTER(_Input), ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_double,
                 ctypes.c_int, ctypes.c_double, ctypes.c_double, ctypes.c_double,
@@ -137,15 +141,27 @@ class FollowingController:
         if not self._handle:
             raise ValueError('Invalid following configuration or allocation failure')
 
-    def step(self, ego_s, ego_speed, obstacles, case_index=2, *, static_reference_offset=None, policy=None):
+    def step(self, ego_s, ego_speed, obstacles, case_index=2, *, static_reference_offset=None, policy=None,
+             timestamp=None, max_speed_rise=None):
         """Run the production controller; rejected input clears history before raising.
 
         This exception is not a vehicle stop command. The caller must request a
         safe stop or terminate its experiment before accepting another frame.
         """
         try:
-            return self._step(ego_s, ego_speed, obstacles, case_index,
-                              static_reference_offset=static_reference_offset, policy=policy)
+            timed = timestamp is not None or max_speed_rise is not None
+            if timed and (timestamp is None or max_speed_rise is None or policy is None):
+                raise ValueError('Speed rise limiting requires timestamp, max_speed_rise and explicit policy')
+            result = self._step(ego_s, ego_speed, obstacles, case_index,
+                                static_reference_offset=static_reference_offset, policy=policy)
+            limited = ctypes.c_double()
+            if not self._dll.following_limit_rise(self._handle, timed, result['target_speed'], ego_speed,
+                    timestamp if timed else 0, max_speed_rise if timed else 0, ctypes.byref(limited)):
+                raise ValueError('Invalid speed rise input or simulation time discontinuity (>0.25s/backwards)')
+            if timed:
+                result['raw_target_speed'] = result['target_speed']
+                result['target_speed'] = limited.value
+            return result
         except (ValueError, TypeError, OverflowError, ctypes.ArgumentError):
             self.reset()
             raise
