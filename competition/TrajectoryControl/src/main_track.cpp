@@ -210,6 +210,7 @@ int main_track(void)
 		// 停止线等上游给出的停车义务，不能被后方车辆的加速建议覆盖。
 		const bool stopBeforeOvertaking = pControl->throttleMode == ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed
 			&& pControl->throttle == 0.0f;
+		const double speedBeforeOvertaking = pControl->throttle;
 		bool lateralProjectionFailed = overtakeSwitcher.state && targetPath.size() < 2;
 		if (overtakeSwitcher.state && !lateralProjectionFailed) /* 邻域超车 */
 		{
@@ -602,6 +603,10 @@ int main_track(void)
 				pControl->throttle = std::min<double>(pControl->throttle, mainVehicle.neighborhood.vrf);
 		}
 
+		// A gradual approach is a positive upper bound, not only a zero-speed stop.
+		if (pControl->throttleMode == ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed)
+			pControl->throttle = std::isfinite(speedBeforeOvertaking) && speedBeforeOvertaking >= 0
+				? std::min<double>(pControl->throttle, speedBeforeOvertaking) : 0.0;
 		if (stopBeforeOvertaking || lateralProjectionFailed || !trafficLightsValid) pControl->throttle = 0.0f;
 		if (lateralProjectionFailed) LOG << "Invalid lateral prediction: stop and retry";
 		mainVehicle.drive();

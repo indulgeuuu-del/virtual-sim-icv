@@ -24,7 +24,7 @@ def build_library():
     paths = ['competition/TrajectoryControl/src/core/stopline.cpp',
              'competition/TrajectoryControl/src/main_track.cpp',
              'tools/native/stopline_bridge.cpp', 'tools/competition_stopline.py',
-             'competition/util/StopLineControl.h']
+             'competition/util/StopLineControl.h', 'competition/util/StopController.h']
     raw = {p: (ROOT / p).read_bytes() for p in paths}
     hashes = {p: hashlib.sha256(b).hexdigest() for p, b in raw.items()}
     out = ROOT / 'work/stopline_controller' / hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()[:20]
@@ -40,6 +40,7 @@ def build_library():
     code = code.replace('// @NEAREST@', nearest).replace('// @BRAKING@', brake)
     code = code.replace('// @STOP_CONTROL@', read_source(raw[paths[4]]))
     out.mkdir(parents=True, exist_ok=True)
+    (out / 'StopController.h').write_bytes(raw[paths[5]])
     (out / 'bridge.cpp').write_text(code, encoding='utf-8')
     vs = Path(os.environ.get('ProgramFiles(x86)', 'C:/Program Files (x86)')) / 'Microsoft Visual Studio/Installer/vswhere.exe'
     install = subprocess.check_output([str(vs), '-latest', '-products', '*', '-requires',
@@ -60,9 +61,47 @@ def build_library():
     if result.returncode:
         raise RuntimeError(f'Build failed: {out / "compile.log"}')
     report = dict(source_sha256=hashes, binary_sha256=hashlib.sha256(dll.read_bytes()).hexdigest(),
-        sdk_build_verified=False, scope='shared C++ legacy/approach control; legacy entry also executes nearest-line and Whole fragment; no constructors, map, drive or arbitration')
+        sdk_build_verified=False, scope='shared C++ legacy/approach and mandatory-stop sequence; legacy entry also executes nearest-line and Whole fragment; no constructors, map, drive or arbitration')
     meta.write_text(json.dumps(report, indent=2), encoding='utf-8')
     return dll, report
+
+
+class _SequenceOutput(ctypes.Structure):
+    _fields_ = [('target',ctypes.c_double),('held',ctypes.c_double),
+                ('phase',ctypes.c_int),('ready',ctypes.c_int)]
+
+
+class StopLineSequence:
+    """One mandatory stop. Permission is external, never inferred from elapsed time."""
+    def __init__(self, dwell_seconds=5):
+        dll,self.build=build_library()
+        self.dll=ctypes.CDLL(str(dll))
+        self.dll.sequence_create.argtypes=[ctypes.c_double]
+        self.dll.sequence_create.restype=ctypes.c_void_p
+        self.dll.sequence_destroy.argtypes=[ctypes.c_void_p]
+        self.dll.sequence_destroy.restype=None
+        self.dll.sequence_step.argtypes=[ctypes.c_void_p]+[ctypes.c_double]*6+[ctypes.c_int]*2+[ctypes.POINTER(_SequenceOutput)]
+        self.dll.sequence_step.restype=ctypes.c_int
+        self.handle=self.dll.sequence_create(dwell_seconds)
+        if not self.handle:
+            raise ValueError('Invalid dwell duration or allocation failure')
+
+    def step(self,time,distance,front,speed,ceiling,margin,permission=False,observed=True):
+        if not self.handle:
+            raise RuntimeError('Closed stop-line sequence')
+        out=_SequenceOutput()
+        if not self.dll.sequence_step(self.handle,time,distance,front,speed,ceiling,margin,
+                                      bool(permission),bool(observed),ctypes.byref(out)):
+            raise RuntimeError('Stop-line sequence call failed')
+        return dict(target=out.target,held=out.held,phase=out.phase,ready=bool(out.ready))
+
+    def close(self):
+        if getattr(self,'handle',None):
+            self.dll.sequence_destroy(self.handle)
+            self.handle=None
+
+    def __del__(self):
+        self.close()
 
 
 class StopLineController:

@@ -1,7 +1,7 @@
 import math
 import unittest
-from tools.competition_stopline import StopLineController
-from tools.carla_stopline import assess
+from tools.competition_stopline import StopLineController, StopLineSequence
+from tools.carla_stopline import assess, assess_release
 
 
 class StopLineTests(unittest.TestCase):
@@ -85,6 +85,79 @@ class StopLineTests(unittest.TestCase):
         self.assertFalse(assess(rows,[])['passed'])
         rows=self.rows();rows[0]['time']=math.nan
         self.assertFalse(assess(rows,[])['passed'])
+
+
+class SequenceTests(unittest.TestCase):
+    def setUp(self):
+        self.c=StopLineSequence(5)
+        self.addCleanup(self.c.close)
+
+    def step(self,t,permission=False,**kw):
+        args=dict(distance=2.65,front=2.43,speed=0,ceiling=8,margin=.2,
+                  permission=permission,observed=True)
+        args.update(kw)
+        return self.c.step(t,**args)
+
+    def test_hold_then_independent_permission(self):
+        self.assertGreater(self.step(0,distance=60)['target'],0)
+        for i in range(1,24):
+            r=self.step(i*.25)
+            self.assertEqual(r['target'],0)
+        self.assertTrue(r['ready'])
+        self.assertEqual(self.step(6,True)['target'],8)
+        self.assertEqual(self.step(6.25,True,distance=-2,speed=2)['target'],8)
+        self.assertEqual(self.step(6.5,False,distance=-3,speed=2)['target'],0)
+
+    def test_early_permission_does_not_skip_dwell(self):
+        for i in range(21):
+            self.assertEqual(self.step(i*.25,True)['target'],0)
+        self.assertEqual(self.step(5.25,True)['target'],8)
+
+    def test_missing_observation_and_clock_reset_hold(self):
+        for failure in ('observed','time'):
+            c=StopLineSequence(5)
+            self.addCleanup(c.close);self.c=c
+            for i in range(21): self.step(i*.25)
+            r=self.step(5.25,True,observed=False) if failure=='observed' else self.step(6,True)
+            self.assertEqual(r['target'],0)
+            t=5.5 if failure=='observed' else 6.25
+            self.assertEqual(self.step(t,True)['held'],0)
+            self.assertEqual(self.step(t+.25,True)['target'],0)
+
+    def test_crossed_or_invalid_cannot_release(self):
+        for kw in (dict(distance=2),dict(front=math.nan),dict(speed=-1)):
+            self.assertEqual(self.step(0,True,**kw)['target'],0)
+
+    def test_drift_after_ready_before_permission_resets_hold(self):
+        for i in range(23): self.step(i*.25)
+        r=self.step(5.75,False,speed=.2)
+        self.assertFalse(r['ready'])
+        self.assertEqual(self.step(6,True)['target'],0)
+
+    def test_release_assessment_uses_physical_motion(self):
+        rows=[dict(time=i*.1,speed_mps=0,front_gap_m=.25,target_mps=0,release_allowed=False)
+              for i in range(62)]
+        rows.extend(dict(time=i*.1,speed_mps=1,front_gap_m=-5 if i==70 else .1,
+                         target_mps=8,release_allowed=True) for i in range(62,71))
+        self.assertTrue(assess_release(rows,[])['passed'])
+        still=[dict(r,speed_mps=0,front_gap_m=.25) for r in rows]
+        self.assertFalse(assess_release(still,[])['passed'])
+        bad=[dict(r) for r in rows];bad[5]['front_gap_m']=-.01
+        self.assertFalse(assess_release(bad,[])['passed'])
+        bad=[dict(r) for r in rows];bad[-1]['time']+=.5
+        self.assertFalse(assess_release(bad,[])['passed'])
+        self.assertFalse(assess_release(rows,[{'frame':1}])['passed'])
+
+    def test_departure_five_second_boundary(self):
+        # Binary-exact quarter-second samples keep this equality test exact.
+        for delay,passed in ((5,True),(5.25,False)):
+            rows=[dict(time=i*.25,speed_mps=0,front_gap_m=.25,target_mps=0,
+                       release_allowed=False) for i in range(25)]
+            for i in range(1,int(delay*4)+2):
+                moved=i*.25>=delay+.25
+                rows.append(dict(time=6+i*.25,speed_mps=1 if moved else 0,
+                    front_gap_m=-5 if moved else .25,target_mps=8,release_allowed=True))
+            self.assertEqual(assess_release(rows,[])['passed'],passed)
 
 
 if __name__=='__main__':

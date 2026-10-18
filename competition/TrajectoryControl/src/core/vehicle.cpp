@@ -351,6 +351,17 @@ void MainVehicle::drive(void)
 		pControl->gear = reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
 			: ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
 	}
+	// A positive Speed target below measured speed is also a braking request.
+	// A stationary car also needs an engaged gear to start (0.1m/s engineering tolerance).
+	// Neutral coasting must not bypass these; Percent remains pedal semantics.
+	if (pControl->throttleMode == ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed
+		&& (pControl->throttle < mainVehicle.speed || mainVehicle.speed <= 0.1f)
+		&& pControl->gear == ESimOne_Gear_Mode::ESimOne_Gear_Mode_Neutral)
+	{
+		pControl->gear = reverse ? ESimOne_Gear_Mode::ESimOne_Gear_Mode_Reverse
+			: ESimOne_Gear_Mode::ESimOne_Gear_Mode_Drive;
+		LOG << "Speed reduction or standstill overrides neutral coasting";
+	}
 
 	// 配置上限单位为m/s；必须在倒车/溜车分支之后执行，Percent模式不作速度解释。
 	if (pControl->throttleMode == ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed)

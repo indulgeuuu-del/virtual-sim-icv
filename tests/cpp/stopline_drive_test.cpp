@@ -48,6 +48,32 @@ int main(int argc,char** argv) {
         std::string name=argv[1];
         mainVehicle.reverse=name.find("reverse")!=std::string::npos || name.find("both")!=std::string::npos;
         if(name.find("slide")!=std::string::npos || name.find("both")!=std::string::npos) slideConfig={{{0,0,0},{50,0,0}}};
+        if(name.rfind("sequence_",0)==0) {
+            StopLineControl::Sequence sequence(5);
+            auto send=[&](double t,double distance,double speed,bool permission) {
+                mainVehicle.speed=static_cast<float>(speed);
+                auto r=sequence.update(t,distance,2.43,speed,8,.2,permission);
+                *pControl=Control{};pControl->throttle=r.targetSpeed;
+                mainVehicle.neighborhood.bl=true;mainVehicle.neighborhood.vl=9;
+                trackSpeedForTest(9,false,true);
+                if(sent.back().throttle>r.targetSpeed) throw std::runtime_error("sequence speed raised downstream");
+                if(speed>r.targetSpeed && sent.back().gear==ESimOne_Gear_Mode::ESimOne_Gear_Mode_Neutral)
+                    throw std::runtime_error("sequence slowdown remained in neutral");
+                return r;
+            };
+            auto slow=send(0,3.43,3,false);
+            if(!(slow.targetSpeed>0 && slow.targetSpeed<3)) throw std::runtime_error("no gradual slowdown");
+            for(int i=1;i<=23;++i) {
+                send(i*.25,2.65,0,false);
+                if(sent.back().throttle!=0 || sent.back().gear==ESimOne_Gear_Mode::ESimOne_Gear_Mode_Neutral)
+                    throw std::runtime_error("hold lost at final output");
+            }
+            auto released=send(6,2.65,0,true);
+            if(!released.ready || sent.back().throttle<=0) throw std::runtime_error("departure blocked");
+            if(sent.back().gear==ESimOne_Gear_Mode::ESimOne_Gear_Mode_Neutral)
+                throw std::runtime_error("departure stayed in neutral");
+            std::cout<<"PASS";return 0;
+        }
         fault="valid";StopLine farLine(HDMapStandalone::MSignal{});
         StopLine ignored=farLine;ignored.toVehicleDist=0;ignored.isBehind=true;
         StopLine adjacent=ignored;adjacent.isBehind=false;adjacent.isVechicleInSameLane=false;

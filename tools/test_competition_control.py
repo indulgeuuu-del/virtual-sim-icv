@@ -61,6 +61,8 @@ OUTPUT_TESTS = (
     'output_invalid_reverse', 'output_invalid_slide', 'output_invalid_percent',
     'output_invalid_steering', 'output_send_failure',
     'output_reverse_slow', 'output_reverse_percent', 'output_reverse_recover',
+    'output_slow_slide_forward', 'output_slow_slide_reverse',
+    'output_slow_slide_percent', 'output_slow_slide_recovery',
 )
 
 
@@ -118,6 +120,8 @@ def main():
             except UnicodeDecodeError:
                 sources[name] = raw.decode('gb18030')
             sources[name] = sources[name].replace('\r\n', '\n')
+        if 'util/StopController.h' in sources:
+            (output / 'StopController.h').write_bytes(sources['util/StopController.h'].encode('utf-8'))
         inputs = [
             Path(__file__), root / 'tests/cpp/manual_stub/main.h',
             root / 'tests/cpp/manual_stub/test_main.cpp', root / 'tests/cpp/drive_output_test.cpp',
@@ -362,6 +366,7 @@ def main():
         # Obstacle internals/grouping remain fixtures; downstream planning is drive().
         if 'util/StopLineControl.h' in sources:
             (follow_dir / 'StopLineControl.h').write_bytes(sources['util/StopLineControl.h'].encode('utf-8'))
+            (follow_dir / 'StopController.h').write_bytes(sources['util/StopController.h'].encode('utf-8'))
         track_prefix = sources['TrajectoryControl/src/main_track.cpp'].split(
             '\t\tFlagType::isCrosswalkExist = getCrossWalk();', 1)
         if len(track_prefix) != 2:
@@ -402,6 +407,7 @@ def main():
 
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
         compile_run(output, ['stopline_drive.cpp'], ['near','far','ignored']
+                    + ['sequence_forward','sequence_reverse','sequence_slide','sequence_both']
                     + [f'{kind}_{mode}' for kind in ('light','crosswalk','projection')
                        for mode in ('forward','reverse','slide','both')], 'stopline_drive')
         compile_run(output, ['stopline_projection.cpp'], ['valid','outside','reversed']

@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include "StopController.h"
 
 // SI units. Geometry and actuator response must be supplied/validated per platform.
 // This controls a continuing stop obligation; release/dwell are caller decisions.
@@ -48,4 +49,39 @@ inline double approachTarget(double distance, double lineOffset, double frontOff
     if (!std::isfinite(envelope) || !std::isfinite(approach)) return 0;
     return std::min(ceiling, std::min(envelope, approach));
 }
+
+// One assigned mandatory stop, with a separately supplied departure permission.
+// The adapter must reset for a new stop and mark unknown observations invalid.
+// No signal recognition or scenario-ID assumptions are made here.
+class Sequence {
+public:
+    explicit Sequence(double dwell, bool exclusive = true) : stop_(dwell,exclusive) {}
+    void reset(double dwell, bool exclusive = true) {
+        stop_.reset(dwell,exclusive); ready_ = departed_ = false;
+    }
+    competition::StopOutput update(double seconds, double distance, double front,
+        double speed, double ceiling, double margin, bool permission, bool observed = true) {
+        const Approach p;
+        if (!observed || !valid(distance,0,front,speed,ceiling,margin)) {
+            stop_.invalidate(); ready_ = false; return {};
+        }
+        const double gap = distance - front;
+        const bool captured = gap >= 0 && gap <= margin + p.capture && speed <= p.captureSpeed;
+        // Before departure, rolling or leaving the stop zone invalidates a
+        // completed hold. StopController's generic ready latch is otherwise sticky.
+        if (!departed_ && ready_ && (speed > 0.1 || !captured)) stop_.invalidate();
+        const auto state = stop_.update(seconds,speed,captured,ceiling,permission);
+        ready_ = state.ready;
+        if (state.ready && permission && state.targetSpeed > 0) departed_ = true;
+        if (state.phase != competition::StopPhase::Approaching) return state;
+        // A crossed line cannot become a successful stop via a negative distance.
+        if (gap < 0) { stop_.invalidate(); return {}; }
+        auto result = state;
+        result.targetSpeed = approachTarget(distance,0,front,speed,ceiling,margin);
+        return result;
+    }
+private:
+    competition::StopController stop_;
+    bool ready_ = false, departed_ = false;
+};
 } // namespace StopLineControl

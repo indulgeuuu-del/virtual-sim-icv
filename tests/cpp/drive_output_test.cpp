@@ -13,6 +13,24 @@ bool driveOutputTest(const std::string& name) {
     steerKpUse = steerKp;
     steerKdUse = steerKd;
     pLight->signalLights = 4;
+    if(name.rfind("output_slow_slide_",0)==0) {
+        slideConfig={{{0,0,0},{50,0,0}}};
+        mainVehicle.speed=3;
+        mainVehicle.reverse=name=="output_slow_slide_reverse";
+        const bool percent=name=="output_slow_slide_percent";
+        if(percent) pControl->throttleMode=Mode::ESimOne_Throttle_Mode_Percent;
+        pControl->throttle=1;
+        mainVehicle.drive();
+        require(obs(0).speed==1,"slow target changed");
+        require(obs(0).gear==(percent ? Gear::ESimOne_Gear_Mode_Neutral :
+            mainVehicle.reverse ? Gear::ESimOne_Gear_Mode_Reverse : Gear::ESimOne_Gear_Mode_Drive),
+            "positive slowdown left in neutral");
+        if(name=="output_slow_slide_recovery") {
+            pControl->throttle=8;mainVehicle.drive();
+            require(obs(1).gear==Gear::ESimOne_Gear_Mode_Neutral,"coast failed to recover");
+        }
+        return true;
+    }
     if(name=="output_reverse_slow" || name=="output_reverse_percent" || name=="output_reverse_recover") {
         mainVehicle.reverse=true;
         const bool percent=name=="output_reverse_percent";
@@ -161,6 +179,9 @@ bool driveOutputTest(const std::string& name) {
                           name == "output_move_reverse";
     if (slide) slideConfig = {{{0, 0, 0}, {50, 0, 0}}};
     const bool move = name == "output_move_reverse" || name == "output_move_slide";
+    // This case exercises coasting while already moving. Standstill departure
+    // inside a sliding region is checked by the stop-line sequence integration.
+    if(name=="output_move_slide") mainVehicle.speed=1;
     pControl->throttle = move ? 8 : 0;
     if (name == "output_percent_zero")
         pControl->throttleMode = Mode::ESimOne_Throttle_Mode_Percent;
@@ -179,8 +200,8 @@ bool driveOutputTest(const std::string& name) {
     if (name == "output_resume_slide") {
         mainVehicle.update(); // release stop, still inside sliding region
         mainVehicle.drive();
-        require(obs(1).speed == 8 && obs(1).gear == Gear::ESimOne_Gear_Mode_Neutral,
-                "stop incorrectly latched or disabled later sliding");
+        require(obs(1).speed == 8 && obs(1).gear == Gear::ESimOne_Gear_Mode_Drive,
+                "standstill departure stayed in neutral or stop remained latched");
         mainVehicle.pt = {50, 0, 0};
         mainVehicle.update(); mainVehicle.drive();
         require(obs(2).gear == Gear::ESimOne_Gear_Mode_Drive, "sliding end state lost");
