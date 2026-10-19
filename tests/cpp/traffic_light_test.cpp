@@ -23,6 +23,8 @@ bool GetTrafficLight(const char*,int id,SimOne_Data_TrafficLight* out) {
     *out={input.next,input.status}; return true;
 }
 }
+bool getTrafficLightObservation(const SSD::SimVector<HDMapStandalone::MSignal>&,
+    HDMapStandalone::MSignal&,bool&,bool&);
 // @TRAFFIC_LIGHT@
 void require(bool ok,const char* text) { if(!ok) throw std::runtime_error(text); }
 int main(int argc,char** argv) {
@@ -35,6 +37,9 @@ int main(int argc,char** argv) {
         else if(name=="failure") { inputs[0].ok=false; expectedKnown=false; }
         else if(name=="green_then_failure") { inputs.push_back({false,true,Status::ESimOne_TrafficLight_Status_Red}); expectedKnown=false; }
         else if(name=="failure_then_red") { inputs[0].ok=false; inputs.push_back({true,true,Status::ESimOne_TrafficLight_Status_Red}); expectedKnown=false; expectedStop=true; }
+        else if(name=="red_then_failure") { inputs[0].status=Status::ESimOne_TrafficLight_Status_Red; inputs.push_back({false,true,Status::ESimOne_TrafficLight_Status_Green}); expectedKnown=false; expectedStop=true; }
+        else if(name=="unknown_status") { inputs[0].status=static_cast<Status>(99); expectedKnown=false; }
+        else if(name=="red_green_conflict") { inputs[0].status=Status::ESimOne_TrafficLight_Status_Red; inputs.push_back({true,true,Status::ESimOne_TrafficLight_Status_Green}); expectedKnown=false; expectedStop=true; }
         else if(name=="unrelated_red") { inputs[0].next=false; inputs[0].status=Status::ESimOne_TrafficLight_Status_Red; }
         else if(name=="empty") inputs.clear();
         else require(name=="green","unknown name");

@@ -63,7 +63,16 @@ float getLaneAzimuth(const SSD::SimString& laneId)
 
 bool getValidTrafficLight(const SSD::SimVector<HDMapStandalone::MSignal>& list, HDMapStandalone::MSignal& light, bool& dataValid)
 {
+	bool relevant = false;
+	return getTrafficLightObservation(list, light, dataValid, relevant);
+}
+
+bool getTrafficLightObservation(const SSD::SimVector<HDMapStandalone::MSignal>& list,
+    HDMapStandalone::MSignal& light, bool& dataValid, bool& relevant)
+{
 	dataValid = true;
+	relevant = false;
+	bool stopping = false, green = false;
 	std::unique_ptr<SimOne_Data_TrafficLight> pTrafficLight = std::make_unique< SimOne_Data_TrafficLight>();
 	for (size_t i = 0, ie = list.size(); i < ie; ++i)
 	{
@@ -76,12 +85,26 @@ bool getValidTrafficLight(const SSD::SimVector<HDMapStandalone::MSignal>& list, 
 		{
 			if (pTrafficLight->status == ESimOne_TrafficLight_Status::ESimOne_TrafficLight_Status_Red || pTrafficLight->status == ESimOne_TrafficLight_Status::ESimOne_TrafficLight_Status_Yellow) // 红灯、黄灯
 			{
-				light = list[i];
-				return true;
+				if (!stopping) light = list[i];
+				stopping = true;
+				relevant = true;
+			}
+			else if (pTrafficLight->status == ESimOne_TrafficLight_Status::ESimOne_TrafficLight_Status_Green) {
+				if (!relevant) light = list[i];
+				green = relevant = true;
+			}
+			else {
+				dataValid = false;
+				globalLogger(Logger::Color::BrightGreen) << "Unsupported next traffic-light state: requesting stop";
 			}
 		}
 	}
-	return false;
+	// Examine the full list: an early red must not hide a later failed read.
+	if (stopping && green) {
+		dataValid = false;
+		globalLogger(Logger::Color::BrightGreen) << "Conflicting next traffic lights: requesting stop";
+	}
+	return stopping;
 }
 
 // 判断主车轨迹是否涉及变道过程

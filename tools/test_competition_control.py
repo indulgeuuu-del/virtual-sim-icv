@@ -451,7 +451,7 @@ def main():
         compile_run(output, ['lateral_gap.cpp'], ['positive_far','negative_far','positive_near','negative_near',
                     'different_road','missing_lane','current_failure','target_failure','empty_prediction','empty_path'], 'lateral_gap')
         compile_run(output, ['traffic_light.cpp'], ['red','yellow','green','failure','green_then_failure',
-                    'failure_then_red','unrelated_red','empty'], 'traffic_light')
+                    'failure_then_red','unrelated_red','empty','red_then_failure','unknown_status','red_green_conflict'], 'traffic_light')
         compile_run(drive_dir, ['main_manual.cpp', 'drive.cpp', 'following.cpp', 'track_speed.cpp', 'test_main.cpp'],
                     LOOP_TESTS + OUTPUT_TESTS, 'drive', ['/DTEST_REAL_DRIVE'])
         compile_run(follow_dir, ['main_follow.cpp', 'support.cpp', 'test.cpp'],

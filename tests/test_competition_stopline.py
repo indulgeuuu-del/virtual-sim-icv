@@ -1,7 +1,7 @@
 import math
 import unittest
-from tools.competition_stopline import StopLineController, StopLineSequence
-from tools.carla_stopline import assess, assess_release
+from tools.competition_stopline import StopLineController, StopLineSequence, SignalStopTask
+from tools.carla_stopline import assess, assess_release, assess_signal_tasks
 
 
 class StopLineTests(unittest.TestCase):
@@ -158,6 +158,70 @@ class SequenceTests(unittest.TestCase):
                 rows.append(dict(time=6+i*.25,speed_mps=1 if moved else 0,
                     front_gap_m=-5 if moved else .25,target_mps=8,release_allowed=True))
             self.assertEqual(assess_release(rows,[])['passed'],passed)
+
+
+class SignalTaskTests(unittest.TestCase):
+    def make(self,dwell=0):
+        c=SignalStopTask(dwell);self.addCleanup(c.close);return c
+
+    @staticmethod
+    def step(c,t=0,token=10,status=1,**kw):
+        args=dict(distance=2.65,front=2.43,speed=0,ceiling=8,margin=.2)
+        args.update(kw)
+        return c.step(token,t,status=status,**args)
+
+    def test_green_does_not_require_artificial_stop(self):
+        c=self.make()
+        green=self.step(c,status=2,distance=30)
+        self.assertEqual(green['target'],8);self.assertEqual(green['signal'],2)
+        self.assertEqual(self.step(c,.1,status=1)['target'],0)
+        self.assertEqual(self.step(c,.2,status=2)['target'],8)
+        self.assertEqual(self.step(c,.3,status=3)['target'],0)
+
+    def test_unknown_and_disappearance_cannot_release_active_stop(self):
+        for fault in (dict(status=0),dict(status=2,ok=False),dict(status=-1),dict(status=2,relevant=False)):
+            c=self.make()
+            self.step(c)
+            result=self.step(c,.1,**fault)
+            self.assertEqual(result['target'],0)
+            self.assertEqual(result['signal'],3 if fault.get('status')==-1 or fault.get('relevant')==False else 0)
+            self.assertEqual(self.step(c,.2,status=2)['target'],8)
+        c=self.make()
+        self.assertEqual(self.step(c,status=-1)['target'],8)
+        self.step(c,.1)
+        c.clear() # adapter explicitly confirms it has exited the task
+        self.assertEqual(self.step(c,.2,status=-1)['target'],8)
+
+    def test_two_tasks_do_not_share_completed_dwell(self):
+        c=self.make(5)
+        for i in range(23): self.step(c,i*.25)
+        self.assertEqual(self.step(c,5.75,status=2)['target'],8)
+        self.assertEqual(self.step(c,6,status=2,token=11)['target'],0)
+        for i in range(1,21): self.assertEqual(self.step(c,6+i*.25,status=2,token=11)['target'],0)
+        self.assertEqual(self.step(c,11.25,status=2,token=11)['target'],8)
+
+    def test_query_failure_invalidates_completed_hold(self):
+        c=self.make(5)
+        for i in range(23): self.step(c,i*.25)
+        self.assertEqual(self.step(c,5.75,status=2,ok=False)['target'],0)
+        r=self.step(c,6,status=2)
+        self.assertEqual(r['target'],0);self.assertEqual(r['held'],0)
+
+    def test_both_physical_stops_required(self):
+        rows=[]
+        for task in (1,2):
+            base=(task-1)*8
+            rows.extend(dict(time=base+i*.25,speed_mps=0,front_gap_m=.25,target_mps=0,
+                release_allowed=False,task_id=task) for i in range(25))
+            rows.extend(dict(time=base+i*.25,speed_mps=2,front_gap_m=-5,target_mps=8,
+                release_allowed=True,task_id=task) for i in range(25,32))
+        self.assertTrue(assess_signal_tasks(rows,[])['passed'])
+        self.assertFalse(assess_signal_tasks(rows[:32],[])['passed'])
+        bad=[dict(r) for r in rows];bad[34]['front_gap_m']=-.1
+        self.assertFalse(assess_signal_tasks(bad,[])['passed'])
+        bad=[dict(r) for r in rows];bad[40]['speed_mps']=2
+        self.assertFalse(assess_signal_tasks(bad,[])['passed'])
+        self.assertFalse(assess_signal_tasks(rows[32:]+rows[:32],[])['passed'])
 
 
 if __name__=='__main__':

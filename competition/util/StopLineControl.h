@@ -84,4 +84,49 @@ private:
     competition::StopController stop_;
     bool ready_ = false, departed_ = false;
 };
+
+enum class Signal { Unknown = 0, Stop = 1, Go = 2, Absent = 3 };
+
+// Adapter assigns stable task tokens after resolving map/lane identity. A token
+// is NOT a scoring ID, SDK light ID or caseName. Clear only after confirmed exit.
+class SignalTask {
+public:
+    explicit SignalTask(double dwell) : dwell_(dwell), sequence_(dwell) {}
+    void clear() { active_ = false; sequence_.reset(dwell_); }
+    competition::StopOutput update(int token, Signal signal, double time,
+        double distance,double front,double speed,double ceiling,double margin) {
+        if (!std::isfinite(dwell_) || dwell_ < 0 || !std::isfinite(time) || time < 0
+            || !valid(distance,0,front,speed,ceiling,margin)) {
+            sequence_.update(time,distance,front,speed,ceiling,margin,false,false);
+            return {};
+        }
+        // An empty/unrelated lamp list does not release an existing obligation.
+        if (signal == Signal::Unknown || signal == Signal::Absent) {
+            sequence_.update(time,distance,front,speed,ceiling,margin,false,false);
+            if (!active_ && signal == Signal::Absent)
+                return {ceiling,0,competition::StopPhase::Approaching,false};
+            return {};
+        }
+        if (token < 0 || (signal != Signal::Go && signal != Signal::Stop)) {
+            sequence_.update(time,distance,front,speed,ceiling,margin,false,false);
+            return {};
+        }
+        if (!active_ || token != token_) {
+            token_ = token; active_ = true; sequence_.reset(dwell_);
+        }
+        // A plain light response does not impose a mandatory stop on green.
+        if (dwell_ == 0) {
+            const double target = signal == Signal::Go ? ceiling
+                : approachTarget(distance,0,front,speed,ceiling,margin);
+            return {target,0,signal == Signal::Go ? competition::StopPhase::Ready
+                : competition::StopPhase::Approaching,signal == Signal::Go};
+        }
+        return sequence_.update(time,distance,front,speed,ceiling,margin,signal == Signal::Go);
+    }
+private:
+    double dwell_;
+    int token_ = -1;
+    bool active_ = false;
+    Sequence sequence_;
+};
 } // namespace StopLineControl

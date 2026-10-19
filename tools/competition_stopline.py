@@ -24,7 +24,8 @@ def build_library():
     paths = ['competition/TrajectoryControl/src/core/stopline.cpp',
              'competition/TrajectoryControl/src/main_track.cpp',
              'tools/native/stopline_bridge.cpp', 'tools/competition_stopline.py',
-             'competition/util/StopLineControl.h', 'competition/util/StopController.h']
+             'competition/util/StopLineControl.h', 'competition/util/StopController.h',
+             'competition/TrajectoryControl/src/core/process.cpp', 'tests/cpp/traffic_light_test.cpp']
     raw = {p: (ROOT / p).read_bytes() for p in paths}
     hashes = {p: hashlib.sha256(b).hexdigest() for p, b in raw.items()}
     out = ROOT / 'work/stopline_controller' / hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()[:20]
@@ -39,6 +40,9 @@ def build_library():
                     'if (potentialStopLine.type == StopLine::Type::Whole &&', '/* 半停止线，主车的策略是变道 */')
     code = code.replace('// @NEAREST@', nearest).replace('// @BRAKING@', brake)
     code = code.replace('// @STOP_CONTROL@', read_source(raw[paths[4]]))
+    query = extract(read_source(raw[paths[6]]), 'bool getValidTrafficLight(', '// 判断主车轨迹是否涉及变道过程')
+    boundary = read_source(raw[paths[7]]).split('// @TRAFFIC_LIGHT@',1)[0]
+    code = code.replace('// @TRAFFIC_QUERY@',boundary + query)
     out.mkdir(parents=True, exist_ok=True)
     (out / 'StopController.h').write_bytes(raw[paths[5]])
     (out / 'bridge.cpp').write_text(code, encoding='utf-8')
@@ -61,7 +65,7 @@ def build_library():
     if result.returncode:
         raise RuntimeError(f'Build failed: {out / "compile.log"}')
     report = dict(source_sha256=hashes, binary_sha256=hashlib.sha256(dll.read_bytes()).hexdigest(),
-        sdk_build_verified=False, scope='shared C++ legacy/approach and mandatory-stop sequence; legacy entry also executes nearest-line and Whole fragment; no constructors, map, drive or arbitration')
+        sdk_build_verified=False, scope='shared C++ stop/task control and production lamp query with SDK field fixtures; legacy entry also executes nearest-line/Whole fragment; no constructors, map, drive or arbitration')
     meta.write_text(json.dumps(report, indent=2), encoding='utf-8')
     return dll, report
 
@@ -130,3 +134,45 @@ class StopLineController:
         if not math.isfinite(result) or result < 0:
             raise RuntimeError('Invalid native stop-line output')
         return result
+
+
+class SignalStopTask:
+    """Real SDK query body with field-level fixture inputs, then shared task logic.
+
+    status: -1 absent, 0 unsupported, 1 red, 2 green, 3 yellow.
+    These are bridge codes, never assumed to equal SDK enum numbers.
+    dwell=0 is plain signal response; dwell>0 explicitly assigns mandatory hold.
+    """
+    def __init__(self,dwell_seconds=0):
+        dll,self.build=build_library()
+        self.dll=ctypes.CDLL(str(dll))
+        self.dll.signal_create.argtypes=[ctypes.c_double]
+        self.dll.signal_create.restype=ctypes.c_void_p
+        self.dll.signal_destroy.argtypes=[ctypes.c_void_p]
+        self.dll.signal_destroy.restype=None
+        self.dll.signal_clear.argtypes=[ctypes.c_void_p]
+        self.dll.signal_clear.restype=None
+        self.dll.signal_step.argtypes=[ctypes.c_void_p,ctypes.c_int]+[ctypes.c_double]*6+[ctypes.c_int]*3+[ctypes.POINTER(_SequenceOutput),ctypes.POINTER(ctypes.c_int)]
+        self.dll.signal_step.restype=ctypes.c_int
+        self.handle=self.dll.signal_create(dwell_seconds)
+        if not self.handle: raise ValueError('Invalid dwell or allocation failure')
+
+    def step(self,token,time,distance,front,speed,ceiling,margin,status,ok=True,relevant=True):
+        if not self.handle: raise RuntimeError('Closed signal task')
+        if not isinstance(token,int) or not 0<=token<=2147483647 or status not in (-1,0,1,2,3):
+            raise ValueError('Invalid task token or signal bridge code')
+        out=_SequenceOutput();signal=ctypes.c_int()
+        if not self.dll.signal_step(self.handle,token,time,distance,front,speed,ceiling,margin,
+            status,bool(ok),bool(relevant),ctypes.byref(out),ctypes.byref(signal)):
+            raise RuntimeError('Signal task call failed')
+        return dict(target=out.target,held=out.held,phase=out.phase,ready=bool(out.ready),signal=signal.value)
+
+    def clear(self):
+        if not self.handle: raise RuntimeError('Closed signal task')
+        self.dll.signal_clear(self.handle)
+
+    def close(self):
+        if getattr(self,'handle',None):
+            self.dll.signal_destroy(self.handle);self.handle=None
+
+    def __del__(self): self.close()

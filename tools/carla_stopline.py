@@ -13,11 +13,11 @@ import subprocess
 import time
 
 if __package__:
-    from .competition_stopline import StopLineController, StopLineSequence
+    from .competition_stopline import StopLineController, StopLineSequence, SignalStopTask
     from .competition_steering import SteeringController, carla_to_formal
     from .carla_stationary_stop import PISpeedActuators, prepare_ego_transform
 else:
-    from competition_stopline import StopLineController, StopLineSequence
+    from competition_stopline import StopLineController, StopLineSequence, SignalStopTask
     from competition_steering import SteeringController, carla_to_formal
     from carla_stationary_stop import PISpeedActuators, prepare_ego_transform
 
@@ -66,6 +66,18 @@ def assess_release(rows,collisions):
         reason='synthetic permission; p19 stop subset and separate p15 response check; no signal recognition or official score')
 
 
+def assess_signal_tasks(rows,collisions):
+    # Segments must be contiguous, complete and ordered; do not accept one success
+    # twice or conceal samples dropped at a task switch.
+    if (not rows or any(not 0<b['time']-a['time']<=.25 for a,b in zip(rows,rows[1:]))
+        or any(r['task_id'] not in (1,2) for r in rows)
+        or any(b['task_id']<a['task_id'] for a,b in zip(rows,rows[1:]))):
+        return dict(passed=False,reason='invalid task sequence')
+    parts={str(k):assess_release([r for r in rows if r['task_id']==k],collisions) for k in (1,2)}
+    return dict(passed=all(r['passed'] for r in parts.values()),tasks=parts,
+        reason='two fixed lines and synthetic SDK lamp fields; real query body/task core; no actual CARLA lamps or official SDK')
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--host', default='localhost');p.add_argument('--port', type=int, default=2000)
@@ -74,6 +86,8 @@ def main():
     p.add_argument('--fixed-delta-seconds', type=float, default=0.05)
     p.add_argument('--seconds', type=float, default=45)
     p.add_argument('--release-after',type=float,help='External permission after N simulation seconds; omitted means keep holding')
+    p.add_argument('--signal-tasks',action='store_true',
+                   help='Two mandatory stops at distance/2 and distance; synthetic green at release-after and twice that time')
     p.add_argument('--distance-geometry', choices=('body','legacy'), default='body',
                    help='Measured body front, or old 4.38046m reference offset')
     p.add_argument('--stop-policy', choices=('approach','legacy'), default='approach',
@@ -87,12 +101,14 @@ def main():
     if a.release_after is not None and (not math.isfinite(a.release_after) or not 5<a.release_after<a.seconds
             or a.stop_policy!='approach' or a.distance_geometry!='body'):
         p.error('Release requires approach/body and 5 < release-after < seconds')
+    if a.signal_tasks and (a.release_after is None or 2*a.release_after>=a.seconds or a.distance<30):
+        p.error('Signal tasks require distance >=30 and seconds > 2*release-after')
     import carla
     a.output.mkdir(parents=True, exist_ok=True)
     if (a.output/'report.json').exists():
         p.error('Output already contains a report; choose a new --output')
     controller=StopLineController();steering=SteeringController();pedals=PISpeedActuators()
-    sequence=StopLineSequence(5) if a.release_after is not None else None
+    sequence=(SignalStopTask(5) if a.signal_tasks else StopLineSequence(5)) if a.release_after is not None else None
     client=carla.Client(a.host,a.port);client.set_timeout(30)
     world=None;original=None;spectator=None;original_view=None;actors=[];rows=[];collisions=[];cleanup=[]
     report=dict(passed=False, sdk_verified=False, official_score_verified=False,
@@ -102,6 +118,8 @@ def main():
         script_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
         scope='shared C++ stop-line control and optional mandatory-stop sequence; legacy bridge also runs nearest-line/Whole fragment; CARLA pedals/geometry; no complete drive or main_track',
         rule='p19 table22 stop subset: [0,0.5]m and >5s; optional separate p15 table12 departure check <=5s, synthetic permission; not official scoring')
+    if a.signal_tasks:
+        report['signal_scope']='real production SDK query body with synthetic field/return inputs; no real CARLA lamp selection'
     try:
         world=client.get_world()
         if any(x.type_id.startswith(('vehicle.','sensor.','walker.')) for x in world.get_actors()):
@@ -146,9 +164,12 @@ def main():
 
         follow_camera()
         line=(origin.x+axis[0]*a.distance,origin.y+axis[1]*a.distance)
+        lines=[(origin.x+axis[0]*d,origin.y+axis[1]*d) for d in
+               ((a.distance/2,a.distance) if a.signal_tasks else (a.distance,))]
+        task_index=0;line=lines[0]
         formal_path=[(q.transform.location.x,-q.transform.location.y,q.transform.location.z) for q in path]
         report.update(platform=client.get_server_version(),map=road.name,vehicle=ego.type_id,
-            spawn_index=index,road_id=wp.road_id,lane_id=wp.lane_id,line_xy=line,
+            spawn_index=index,road_id=wp.road_id,lane_id=wp.lane_id,line_xy=line,task_lines_xy=lines,
             legacy_front_offset_m=4.38046,margin_m=controller.margin)
         world.debug.draw_line(carla.Location(line[0]-axis[1]*2,line[1]+axis[0]*2,origin.z),
             carla.Location(line[0]+axis[1]*2,line[1]-axis[0]*2,origin.z),thickness=0.1,color=carla.Color(255,0,0),life_time=a.seconds)
@@ -164,6 +185,7 @@ def main():
         release_shown=False
         for _ in range(math.ceil(a.seconds/a.fixed_delta_seconds)):
             frame_started=time.monotonic()
+            line=lines[task_index]
             snapshot=world.get_snapshot();pose=ego.get_transform();location=pose.location
             speed=ego.get_velocity().length()
             reference=(line[0]-location.x)*axis[0]+(line[1]-location.y)*axis[1]
@@ -174,8 +196,13 @@ def main():
             if abs(lateral)>0.4 or abs(yaw)>3: raise RuntimeError('Left straight experiment corridor')
             used_front=front if a.distance_geometry=='body' else 4.38046
             state=dict(phase=-1,held=0,ready=False)
-            release_allowed=a.release_after is not None and snapshot.timestamp.elapsed_seconds-start_simulation>=a.release_after
-            if sequence is not None:
+            release_time=None if a.release_after is None else a.release_after*(task_index+1)
+            release_allowed=release_time is not None and snapshot.timestamp.elapsed_seconds-start_simulation>=release_time
+            if a.signal_tasks:
+                state=sequence.step(task_index+1,snapshot.timestamp.elapsed_seconds,reference,used_front,speed,
+                                    a.speed_kmh/3.6,controller.margin,2 if release_allowed else 1)
+                target=state['target']
+            elif sequence is not None:
                 state=sequence.step(snapshot.timestamp.elapsed_seconds,reference,used_front,speed,
                                     a.speed_kmh/3.6,controller.margin,release_allowed)
                 target=state['target']
@@ -190,23 +217,31 @@ def main():
                 reference_distance_m=reference,front_offset_m=front,front_gap_m=reference-front,
                 control_front_offset_m=used_front,target_mps=target,
                 release_allowed=release_allowed,
+                task_id=task_index+1,signal_state=state.get('signal',-1),
                 stop_phase=state['phase'],controller_held_s=state['held'],controller_ready=state['ready'],
                 throttle=throttle,brake=brake,steering=steer,lateral_m=lateral))
             if release_allowed and not release_shown:
-                print('External permission granted; the C++ controller still requires completed standstill.',flush=True)
+                print(f'Task {task_index+1}: external permission granted; the C++ controller still requires completed standstill.',flush=True)
                 world.debug.draw_line(carla.Location(line[0]-axis[1]*2,line[1]+axis[0]*2,origin.z+.03),
                     carla.Location(line[0]+axis[1]*2,line[1]-axis[0]*2,origin.z+.03),
                     thickness=.15,color=carla.Color(0,255,0),life_time=a.seconds)
                 release_shown=True
             if release_allowed and reference-front<=-5:
-                break # finish within the prevalidated straight corridor
+                if task_index+1==len(lines): break # finish within the prevalidated corridor
+                task_index+=1;release_shown=False
+                next_line=lines[task_index]
+                print(f'Task {task_index+1}: new stop line; dwell must be observed again.',flush=True)
+                world.debug.draw_line(carla.Location(next_line[0]-axis[1]*2,next_line[1]+axis[0]*2,origin.z),
+                    carla.Location(next_line[0]+axis[1]*2,next_line[1]-axis[0]*2,origin.z),
+                    thickness=.1,color=carla.Color(255,0,0),life_time=a.seconds)
             ego.apply_control(carla.VehicleControl(throttle=throttle,brake=brake,steer=max(-1,min(1,steer)),manual_gear_shift=True,gear=1))
             world.tick(20)
             follow_camera()
             if not a.no_realtime:
                 time.sleep(max(0.0,a.fixed_delta_seconds-(time.monotonic()-frame_started)))
         report['playback_wall_seconds']=time.monotonic()-playback_started
-        report.update(assessment=assess_release(rows,collisions) if sequence else assess(rows,collisions))
+        report.update(assessment=assess_signal_tasks(rows,collisions) if a.signal_tasks else
+                      assess_release(rows,collisions) if sequence else assess(rows,collisions))
         report['passed']=report['assessment']['passed']
     except KeyboardInterrupt:
         report['error']='Interrupted by user'

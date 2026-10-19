@@ -10,6 +10,9 @@ class Obstacle;
 extern double getRoadWidth(const SSD::SimString& laneId, const SSD::SimPoint3D& pos);
 extern float getLaneAzimuth(const SSD::SimString& laneId);
 extern bool getValidTrafficLight(const SSD::SimVector<HDMapStandalone::MSignal>& list, HDMapStandalone::MSignal& light, bool& dataValid);
+// A false stop result is explicit green only when dataValid && relevant.
+extern bool getTrafficLightObservation(const SSD::SimVector<HDMapStandalone::MSignal>& list,
+    HDMapStandalone::MSignal& light, bool& dataValid, bool& relevant);
 
 // 计算合成矢量的方位角（ENU 坐标系下，即以正东为 0 度，逆时针为正方向）
 inline float calculateResultantAzimuth(float xVelocity, float yVelocity)
