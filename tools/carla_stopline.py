@@ -1,7 +1,7 @@
-"""Fixed virtual stop-line experiment using shared production C++ speed control.
+"""Stop-line and map-signal experiments using shared production C++ control.
 
-Requires an exclusive CARLA server. Optional externally timed release; no signal
-detection or junction logic. Rules reference: scoring PDF p19 table22, p15 table12.
+Requires an exclusive CARLA server. Fixed-line or actual map-lamp experiment;
+no visual recognition/full junction logic. Rules: scoring PDF p19 table22, p15 table12.
 """
 import argparse
 import csv
@@ -16,10 +16,12 @@ if __package__:
     from .competition_stopline import StopLineController, StopLineSequence, SignalStopTask
     from .competition_steering import SteeringController, carla_to_formal
     from .carla_stationary_stop import PISpeedActuators, prepare_ego_transform
+    from .carla_signal import approaches, observe, assess_signal
 else:
     from competition_stopline import StopLineController, StopLineSequence, SignalStopTask
     from competition_steering import SteeringController, carla_to_formal
     from carla_stationary_stop import PISpeedActuators, prepare_ego_transform
+    from carla_signal import approaches, observe, assess_signal
 
 
 def assess(rows, collisions):
@@ -82,12 +84,14 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--host', default='localhost');p.add_argument('--port', type=int, default=2000)
     p.add_argument('--speed-kmh', type=float, default=30)
-    p.add_argument('--distance', type=float, default=60, help='Initial vehicle reference point to fixed line, m')
+    p.add_argument('--distance', type=float, default=60, help='Initial reference-to-line distance, m; map mode follows stop waypoint backwards')
     p.add_argument('--fixed-delta-seconds', type=float, default=0.05)
     p.add_argument('--seconds', type=float, default=45)
-    p.add_argument('--release-after',type=float,help='External permission after N simulation seconds; omitted means keep holding')
+    p.add_argument('--release-after',type=float,help='External permission (map mode: set actual lamp green) after N simulation seconds')
     p.add_argument('--signal-tasks',action='store_true',
                    help='Two mandatory stops at distance/2 and distance; synthetic green at release-after and twice that time')
+    p.add_argument('--map-signal',action='store_true',help='Use actual CARLA lamp and its API stop waypoint; ordinary signal response')
+    p.add_argument('--initial-green',action='store_true',help='With --map-signal, keep actual lamp green from start')
     p.add_argument('--distance-geometry', choices=('body','legacy'), default='body',
                    help='Measured body front, or old 4.38046m reference offset')
     p.add_argument('--stop-policy', choices=('approach','legacy'), default='approach',
@@ -103,14 +107,23 @@ def main():
         p.error('Release requires approach/body and 5 < release-after < seconds')
     if a.signal_tasks and (a.release_after is None or 2*a.release_after>=a.seconds or a.distance<30):
         p.error('Signal tasks require distance >=30 and seconds > 2*release-after')
+    if a.initial_green and (not a.map_signal or a.release_after is not None):
+        p.error('Initial green requires --map-signal without --release-after')
+    if a.map_signal and (a.signal_tasks or a.stop_policy!='approach' or a.distance_geometry!='body'
+                         or (not a.initial_green and a.release_after is None)):
+        p.error('Map signal requires approach/body and --release-after or --initial-green; excludes --signal-tasks')
     import carla
     a.output.mkdir(parents=True, exist_ok=True)
     if (a.output/'report.json').exists():
         p.error('Output already contains a report; choose a new --output')
     controller=StopLineController();steering=SteeringController();pedals=PISpeedActuators()
     sequence=(SignalStopTask(5) if a.signal_tasks else StopLineSequence(5)) if a.release_after is not None else None
+    if a.map_signal:
+        if sequence is not None: sequence.close()
+        sequence=SignalStopTask(0)
     client=carla.Client(a.host,a.port);client.set_timeout(30)
     world=None;original=None;spectator=None;original_view=None;actors=[];rows=[];collisions=[];cleanup=[]
+    lamp=None;lamp_original=[];original_frozen=None;lamp_switched=False;task_cleared=False
     report=dict(passed=False, sdk_verified=False, official_score_verified=False,
         source_build=controller.build, steering_build=steering.build,
         git_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).resolve().parents[1],text=True).strip(),
@@ -120,6 +133,11 @@ def main():
         rule='p19 table22 stop subset: [0,0.5]m and >5s; optional separate p15 table12 departure check <=5s, synthetic permission; not official scoring')
     if a.signal_tasks:
         report['signal_scope']='real production SDK query body with synthetic field/return inputs; no real CARLA lamp selection'
+    if a.map_signal:
+        report['signal_scope']='actual CARLA actor state -> SDK field fixture -> real query body -> shared SignalTask(dwell=0); no full main_track'
+        report['rule']='p15 table12: red stop gap [0,0.5]m and green departure <=5s subset; no compulsory dwell; API waypoint not verified painted line'
+        report['adapter_sha256']=hashlib.sha256(Path(__file__).with_name('carla_signal.py').read_bytes()).hexdigest()
+        report['lamp_cleanup_scope']='state/frozen flags restored and checked; phase elapsed time cannot be rewound'
     try:
         world=client.get_world()
         if any(x.type_id.startswith(('vehicle.','sensor.','walker.')) for x in world.get_actors()):
@@ -131,7 +149,15 @@ def main():
         world.apply_settings(settings)
         road=world.get_map();bp=world.get_blueprint_library().find('vehicle.tesla.model3')
         ego=None
-        for index,spawn in enumerate(road.get_spawn_points()):
+        if a.map_signal:
+            for candidate,stop,wp,path in approaches(world,a.distance):
+                spawn=wp.transform
+                spawn.location.z+=.5 # waypoints lie on asphalt; reserve body spawn clearance
+                ego=world.try_spawn_actor(bp,prepare_ego_transform(carla,spawn,wp.transform,'lane-center'))
+                if ego is not None:
+                    lamp=candidate;forward=wp.transform.get_forward_vector();index=None
+                    break
+        for index,spawn in (() if a.map_signal else enumerate(road.get_spawn_points())):
             wp=road.get_waypoint(spawn.location);forward=wp.transform.get_forward_vector()
             if wp.is_junction: continue
             path=[wp]
@@ -147,6 +173,20 @@ def main():
             if ego is not None: break
         if ego is None: raise RuntimeError('No free straight route')
         actors.append(ego)
+        if a.map_signal:
+            lamps=list(world.get_actors().filter('traffic.traffic_light'))
+            lamp_original=[(x,x.get_state(),x.is_frozen()) for x in lamps]
+            if len({frozen for _,_,frozen in lamp_original})!=1:
+                raise RuntimeError('Mixed frozen lamp states: cannot safely restore global freeze')
+            original_frozen=lamp_original[0][2]
+            world.freeze_all_traffic_lights(True)
+            for x,_,_ in lamp_original: x.set_state(carla.TrafficLightState.Red)
+            if a.initial_green: lamp.set_state(carla.TrafficLightState.Green)
+            report['map_signal_binding']=dict(actor_id=lamp.id,road_id=stop.road_id,
+                section_id=stop.section_id,lane_id=stop.lane_id,stop_s=stop.s,
+                identity=[road.name,lamp.id,stop.road_id,stop.section_id,stop.lane_id,stop.s],
+                token=1,stop_source='TrafficLight.get_stop_waypoints; painted marking equivalence unverified',
+                affected_lanes=[(q.road_id,q.lane_id) for q in lamp.get_affected_lane_waypoints()])
         sensor=world.spawn_actor(world.get_blueprint_library().find('sensor.other.collision'),carla.Transform(),attach_to=ego)
         actors.append(sensor);sensor.listen(lambda e:collisions.append(dict(frame=e.frame,other=e.other_actor.type_id)))
         ego.apply_control(carla.VehicleControl(brake=1,manual_gear_shift=True,gear=1))
@@ -166,6 +206,7 @@ def main():
         line=(origin.x+axis[0]*a.distance,origin.y+axis[1]*a.distance)
         lines=[(origin.x+axis[0]*d,origin.y+axis[1]*d) for d in
                ((a.distance/2,a.distance) if a.signal_tasks else (a.distance,))]
+        if a.map_signal: lines=[(stop.transform.location.x,stop.transform.location.y)]
         task_index=0;line=lines[0]
         formal_path=[(q.transform.location.x,-q.transform.location.y,q.transform.location.z) for q in path]
         report.update(platform=client.get_server_version(),map=road.name,vehicle=ego.type_id,
@@ -191,6 +232,7 @@ def main():
             reference=(line[0]-location.x)*axis[0]+(line[1]-location.y)*axis[1]
             vertices=ego.bounding_box.get_world_vertices(pose)
             front=max((v.x-location.x)*axis[0]+(v.y-location.y)*axis[1] for v in vertices)
+            rear=min((v.x-location.x)*axis[0]+(v.y-location.y)*axis[1] for v in vertices)
             lateral=-(location.x-origin.x)*axis[1]+(location.y-origin.y)*axis[0]
             yaw=(pose.rotation.yaw-wp.transform.rotation.yaw+180)%360-180
             if abs(lateral)>0.4 or abs(yaw)>3: raise RuntimeError('Left straight experiment corridor')
@@ -198,7 +240,20 @@ def main():
             state=dict(phase=-1,held=0,ready=False)
             release_time=None if a.release_after is None else a.release_after*(task_index+1)
             release_allowed=release_time is not None and snapshot.timestamp.elapsed_seconds-start_simulation>=release_time
-            if a.signal_tasks:
+            lamp_name='synthetic'
+            if a.map_signal:
+                if release_allowed and not lamp_switched:
+                    lamp.set_state(carla.TrafficLightState.Green);lamp_switched=True
+                code,ok,lamp_name=observe(lamp)
+                release_allowed=ok and code==2 # permission comes from observation, NOT the timer
+                # One binding for this run; token 1 is allocated only after the
+                # map/lane/direction association, and is never an actor ID.
+                state=sequence.step(1,snapshot.timestamp.elapsed_seconds,reference,used_front,speed,
+                                    a.speed_kmh/3.6,controller.margin,code,ok=ok)
+                target=state['target']
+                if release_allowed and reference-front<=-5 and reference-rear<=0:
+                    sequence.clear();task_cleared=True
+            elif a.signal_tasks:
                 state=sequence.step(task_index+1,snapshot.timestamp.elapsed_seconds,reference,used_front,speed,
                                     a.speed_kmh/3.6,controller.margin,2 if release_allowed else 1)
                 target=state['target']
@@ -218,15 +273,17 @@ def main():
                 control_front_offset_m=used_front,target_mps=target,
                 release_allowed=release_allowed,
                 task_id=task_index+1,signal_state=state.get('signal',-1),
+                lamp_state=lamp_name,rear_gap_m=reference-rear,task_cleared=task_cleared,
                 stop_phase=state['phase'],controller_held_s=state['held'],controller_ready=state['ready'],
                 throttle=throttle,brake=brake,steering=steer,lateral_m=lateral))
             if release_allowed and not release_shown:
-                print(f'Task {task_index+1}: external permission granted; the C++ controller still requires completed standstill.',flush=True)
+                print('Actual CARLA green observed; shared C++ signal controller permits departure.' if a.map_signal else
+                      f'Task {task_index+1}: external permission granted; the C++ controller still requires completed standstill.',flush=True)
                 world.debug.draw_line(carla.Location(line[0]-axis[1]*2,line[1]+axis[0]*2,origin.z+.03),
                     carla.Location(line[0]+axis[1]*2,line[1]-axis[0]*2,origin.z+.03),
                     thickness=.15,color=carla.Color(0,255,0),life_time=a.seconds)
                 release_shown=True
-            if release_allowed and reference-front<=-5:
+            if release_allowed and reference-front<=-5 and (not a.map_signal or task_cleared):
                 if task_index+1==len(lines): break # finish within the prevalidated corridor
                 task_index+=1;release_shown=False
                 next_line=lines[task_index]
@@ -240,7 +297,8 @@ def main():
             if not a.no_realtime:
                 time.sleep(max(0.0,a.fixed_delta_seconds-(time.monotonic()-frame_started)))
         report['playback_wall_seconds']=time.monotonic()-playback_started
-        report.update(assessment=assess_signal_tasks(rows,collisions) if a.signal_tasks else
+        report.update(assessment=assess_signal(rows,collisions,a.initial_green) if a.map_signal else
+                      assess_signal_tasks(rows,collisions) if a.signal_tasks else
                       assess_release(rows,collisions) if sequence else assess(rows,collisions))
         report['passed']=report['assessment']['passed']
     except KeyboardInterrupt:
@@ -256,6 +314,16 @@ def main():
                 if actor.type_id.startswith('sensor.'): actor.stop()
                 if not actor.destroy(): cleanup.append(f'destroy failed {actor.id}')
             except Exception as e: cleanup.append(str(e))
+        if original_frozen is not None:
+            try:
+                for light,state,_ in lamp_original: light.set_state(state)
+                world.freeze_all_traffic_lights(original_frozen)
+                # State setters are RPCs; tick once while still synchronous to
+                # read back restored state. Phase elapsed time cannot be reset.
+                world.tick(20)
+                if any(x.get_state()!=state or x.is_frozen()!=frozen for x,state,frozen in lamp_original):
+                    cleanup.append('lamp restoration readback mismatch')
+            except Exception as e: cleanup.append(f'lamp restore: {e}')
         if world is not None and original is not None:
             try: world.apply_settings(original)
             except Exception as e: cleanup.append(str(e))
