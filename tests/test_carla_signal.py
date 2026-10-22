@@ -98,5 +98,52 @@ class AssessmentTests(unittest.TestCase):
         self.assertFalse(assess_signal(rows,[],True)['passed'])
 
 
+class DynamicSignalTests(unittest.TestCase):
+    def assess(self,rows,profile='approach-red'):
+        from tools.carla_signal import assess_transitions
+        return assess_transitions(rows,[],profile)
+
+    @staticmethod
+    def rows(stop='Red',gap=.25):
+        rows=[dict(time=i*.25,speed_mps=2,front_gap_m=30-i,rear_gap_m=35-i,
+                   target_mps=8,lamp_state='Green',task_cleared=False) for i in range(4)]
+        rows.extend(dict(time=i*.25,speed_mps=0,front_gap_m=gap,rear_gap_m=gap+5,
+                         target_mps=0,lamp_state=stop,task_cleared=False) for i in range(4,9))
+        rows.extend(dict(time=i*.25,speed_mps=0 if i==9 else 2,front_gap_m=gap if i<12 else -5,
+                         rear_gap_m=gap+5 if i<12 else -.1,target_mps=8,lamp_state='Green',
+                         task_cleared=i==12) for i in range(9,13))
+        return rows
+
+    def test_moving_green_red_green_and_yellow(self):
+        for color,profile in [('Red','approach-red'),('Yellow','approach-yellow')]:
+            r=self.assess(self.rows(color),profile)
+            self.assertTrue(r['passed']);self.assertEqual(r['departure_delay_s'],.25)
+
+    def test_no_event_or_initial_motion_is_not_success(self):
+        rows=self.rows()
+        self.assertFalse(self.assess(rows[4:])['passed'])
+        for r in rows:r['lamp_state']='Green'
+        self.assertFalse(self.assess(rows)['passed'])
+        rows=self.rows()
+        for r in rows[:4]:r['speed_mps']=0
+        self.assertFalse(self.assess(rows)['passed'])
+
+    def test_fault_requires_zero_request_physical_stop_and_recovery(self):
+        rows=self.rows('injected_read_failure',gap=20)
+        self.assertTrue(self.assess(rows,'read-outage')['passed'])
+        for i,change in ((5,dict(target_mps=1)),(8,dict(speed_mps=1)),
+                         (6,dict(front_gap_m=-.01)),(12,dict(task_cleared=False)),
+                         (10,dict(lamp_state='injected_read_failure'))):
+            bad=[dict(r) for r in rows];bad[i].update(change)
+            with self.subTest(change=change):
+                self.assertFalse(self.assess(bad,'read-outage')['passed'])
+
+    def test_rejected_crossing_distance_or_sample_gap(self):
+        for i,change in ((4,dict(front_gap_m=-.01)),(8,dict(front_gap_m=.51)),
+                         (3,dict(time=3)),(4,dict(lamp_state='Yellow'))):
+            rows=self.rows();rows[i].update(change)
+            with self.subTest(change=change):self.assertFalse(self.assess(rows)['passed'])
+
+
 if __name__=='__main__':
     unittest.main()

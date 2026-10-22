@@ -16,12 +16,12 @@ if __package__:
     from .competition_stopline import StopLineController, StopLineSequence, SignalStopTask
     from .competition_steering import SteeringController, carla_to_formal
     from .carla_stationary_stop import PISpeedActuators, prepare_ego_transform
-    from .carla_signal import approaches, observe, assess_signal
+    from .carla_signal import approaches, observe, assess_signal, assess_transitions
 else:
     from competition_stopline import StopLineController, StopLineSequence, SignalStopTask
     from competition_steering import SteeringController, carla_to_formal
     from carla_stationary_stop import PISpeedActuators, prepare_ego_transform
-    from carla_signal import approaches, observe, assess_signal
+    from carla_signal import approaches, observe, assess_signal, assess_transitions
 
 
 def assess(rows, collisions):
@@ -92,6 +92,9 @@ def main():
                    help='Two mandatory stops at distance/2 and distance; synthetic green at release-after and twice that time')
     p.add_argument('--map-signal',action='store_true',help='Use actual CARLA lamp and its API stop waypoint; ordinary signal response')
     p.add_argument('--initial-green',action='store_true',help='With --map-signal, keep actual lamp green from start')
+    p.add_argument('--signal-profile',choices=('red-green','approach-red','approach-yellow','read-outage'),default='red-green',
+                   help='Map mode: initially green, then red/yellow or injected failed read, then green/recovery at release-after')
+    p.add_argument('--change-after',type=float,default=2,help='Dynamic profile changes after N simulation seconds')
     p.add_argument('--distance-geometry', choices=('body','legacy'), default='body',
                    help='Measured body front, or old 4.38046m reference offset')
     p.add_argument('--stop-policy', choices=('approach','legacy'), default='approach',
@@ -112,6 +115,9 @@ def main():
     if a.map_signal and (a.signal_tasks or a.stop_policy!='approach' or a.distance_geometry!='body'
                          or (not a.initial_green and a.release_after is None)):
         p.error('Map signal requires approach/body and --release-after or --initial-green; excludes --signal-tasks')
+    if a.signal_profile!='red-green' and (not a.map_signal or a.initial_green or a.release_after is None
+            or not math.isfinite(a.change_after) or not 0<a.change_after<a.release_after):
+        p.error('Dynamic profile requires --map-signal and 0 < change-after < release-after, without initial-green')
     import carla
     a.output.mkdir(parents=True, exist_ok=True)
     if (a.output/'report.json').exists():
@@ -124,6 +130,7 @@ def main():
     client=carla.Client(a.host,a.port);client.set_timeout(30)
     world=None;original=None;spectator=None;original_view=None;actors=[];rows=[];collisions=[];cleanup=[]
     lamp=None;lamp_original=[];original_frozen=None;lamp_switched=False;task_cleared=False
+    signal_changed=False;last_observed_lamp=None
     report=dict(passed=False, sdk_verified=False, official_score_verified=False,
         source_build=controller.build, steering_build=steering.build,
         git_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).resolve().parents[1],text=True).strip(),
@@ -181,7 +188,7 @@ def main():
             original_frozen=lamp_original[0][2]
             world.freeze_all_traffic_lights(True)
             for x,_,_ in lamp_original: x.set_state(carla.TrafficLightState.Red)
-            if a.initial_green: lamp.set_state(carla.TrafficLightState.Green)
+            if a.initial_green or a.signal_profile!='red-green': lamp.set_state(carla.TrafficLightState.Green)
             report['map_signal_binding']=dict(actor_id=lamp.id,road_id=stop.road_id,
                 section_id=stop.section_id,lane_id=stop.lane_id,stop_s=stop.s,
                 identity=[road.name,lamp.id,stop.road_id,stop.section_id,stop.lane_id,stop.s],
@@ -241,11 +248,23 @@ def main():
             release_time=None if a.release_after is None else a.release_after*(task_index+1)
             release_allowed=release_time is not None and snapshot.timestamp.elapsed_seconds-start_simulation>=release_time
             lamp_name='synthetic'
+            actual_lamp_name='synthetic';injected_fault=False
             if a.map_signal:
+                elapsed=snapshot.timestamp.elapsed_seconds-start_simulation
+                if a.signal_profile!='red-green' and elapsed>=a.change_after and not signal_changed:
+                    if a.signal_profile=='approach-red': lamp.set_state(carla.TrafficLightState.Red)
+                    elif a.signal_profile=='approach-yellow': lamp.set_state(carla.TrafficLightState.Yellow)
+                    signal_changed=True
                 if release_allowed and not lamp_switched:
                     lamp.set_state(carla.TrafficLightState.Green);lamp_switched=True
                 code,ok,lamp_name=observe(lamp)
+                actual_lamp_name=lamp_name
+                injected_fault=a.signal_profile=='read-outage' and a.change_after<=elapsed<a.release_after
+                if injected_fault: code,ok,lamp_name=0,False,'injected_read_failure'
                 release_allowed=ok and code==2 # permission comes from observation, NOT the timer
+                if lamp_name!=last_observed_lamp:
+                    print(f'Observed lamp: {lamp_name} at {elapsed:.2f}s.',flush=True)
+                    last_observed_lamp=lamp_name
                 # One binding for this run; token 1 is allocated only after the
                 # map/lane/direction association, and is never an actor ID.
                 state=sequence.step(1,snapshot.timestamp.elapsed_seconds,reference,used_front,speed,
@@ -274,6 +293,7 @@ def main():
                 release_allowed=release_allowed,
                 task_id=task_index+1,signal_state=state.get('signal',-1),
                 lamp_state=lamp_name,rear_gap_m=reference-rear,task_cleared=task_cleared,
+                actual_lamp_state=actual_lamp_name,injected_read_failure=injected_fault,
                 stop_phase=state['phase'],controller_held_s=state['held'],controller_ready=state['ready'],
                 throttle=throttle,brake=brake,steering=steer,lateral_m=lateral))
             if release_allowed and not release_shown:
@@ -297,7 +317,8 @@ def main():
             if not a.no_realtime:
                 time.sleep(max(0.0,a.fixed_delta_seconds-(time.monotonic()-frame_started)))
         report['playback_wall_seconds']=time.monotonic()-playback_started
-        report.update(assessment=assess_signal(rows,collisions,a.initial_green) if a.map_signal else
+        report.update(assessment=assess_transitions(rows,collisions,a.signal_profile) if a.map_signal and a.signal_profile!='red-green' else
+                      assess_signal(rows,collisions,a.initial_green) if a.map_signal else
                       assess_signal_tasks(rows,collisions) if a.signal_tasks else
                       assess_release(rows,collisions) if sequence else assess(rows,collisions))
         report['passed']=report['assessment']['passed']

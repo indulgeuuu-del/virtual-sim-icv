@@ -110,3 +110,43 @@ def assess_signal(rows, collisions, initially_green=False):
                 final_red_gap_m=gap,stopped_on_red=stopped,crossed_on_red=crossed,
                 departure_delay_s=delay,cleared=clear,
                 reason='p15 table12 response subset; CARLA API stop point, no painted-line/official scoring validation')
+
+
+def assess_transitions(rows,collisions,profile):
+    """Require actual motion, an observed stop/fault interval, then recovery.
+
+    The fault test uses an explicitly injected failed read, not a CARLA outage.
+    Stopping early on unknown input is permitted; the red/yellow distance check
+    is not applied to that different engineering failure mode.
+    """
+    expected={'approach-red':'Red','approach-yellow':'Yellow',
+              'read-outage':'injected_read_failure'}.get(profile)
+    if (expected is None or not rows or collisions
+            or any(not all(math.isfinite(r[k]) for k in
+                ('time','speed_mps','front_gap_m','target_mps','rear_gap_m')) for r in rows)
+            or any(not 0<b['time']-a['time']<=.25 for a,b in zip(rows,rows[1:]))):
+        return dict(passed=False,reason='invalid profile, collision or interrupted samples')
+    begin=next((i for i,r in enumerate(rows) if r['lamp_state']!= 'Green'),None)
+    if begin is None or begin==0 or rows[begin-1]['speed_mps']<=.1:
+        return dict(passed=False,reason='no signal change while moving')
+    end=next((i for i in range(begin,len(rows)) if rows[i]['lamp_state']=='Green'),None)
+    if end is None or any(r['lamp_state']!=expected for r in rows[begin:end]) or any(
+            r['lamp_state']!='Green' for r in rows[end:]):
+        return dict(passed=False,reason='unexpected signal/fault sequence or no recovery')
+    if expected!='injected_read_failure':
+        # Existing independent red-stop + departure check accepts yellow as a
+        # conservative stop request. Signal onset was verified above.
+        result=assess_signal(rows[begin:],collisions)
+        result['initial_motion_verified']=True
+        result['profile']=profile
+        return result
+    fault=rows[begin:end];after=rows[end:]
+    moved=next((r for r in after if r['speed_mps']>.1),None)
+    delay=None if moved is None else moved['time']-after[0]['time']
+    safe=all(r['target_mps']==0 and r['front_gap_m']>=0 for r in fault)
+    stopped=fault[-1]['speed_mps']<=.1
+    cleared=after[-1]['task_cleared'] and after[-1]['front_gap_m']<=-5 and after[-1]['rear_gap_m']<=0
+    return dict(passed=safe and stopped and delay is not None and delay<=5 and cleared,
+        fault_stop_gap_m=fault[-1]['front_gap_m'],zero_request_during_fault=safe,
+        stopped_during_fault=stopped,departure_delay_s=delay,cleared=cleared,
+        reason='injected adapter read failure with real CARLA physics; <=5s recovery engineering target, not official fault scoring')
