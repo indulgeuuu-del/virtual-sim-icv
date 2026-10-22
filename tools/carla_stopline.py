@@ -16,12 +16,12 @@ if __package__:
     from .competition_stopline import StopLineController, StopLineSequence, SignalStopTask
     from .competition_steering import SteeringController, carla_to_formal
     from .carla_stationary_stop import PISpeedActuators, prepare_ego_transform
-    from .carla_signal import approaches, observe, assess_signal, assess_transitions
+    from .carla_signal import approaches, observe, assess_signal, assess_transitions, assess_passage
 else:
     from competition_stopline import StopLineController, StopLineSequence, SignalStopTask
     from competition_steering import SteeringController, carla_to_formal
     from carla_stationary_stop import PISpeedActuators, prepare_ego_transform
-    from carla_signal import approaches, observe, assess_signal, assess_transitions
+    from carla_signal import approaches, observe, assess_signal, assess_transitions, assess_passage
 
 
 def assess(rows, collisions):
@@ -95,6 +95,8 @@ def main():
     p.add_argument('--signal-profile',choices=('red-green','approach-red','approach-yellow','read-outage'),default='red-green',
                    help='Map mode: initially green, then red/yellow or injected failed read, then green/recovery at release-after')
     p.add_argument('--change-after',type=float,default=2,help='Dynamic profile changes after N simulation seconds')
+    p.add_argument('--after-passage',choices=('red','read-outage'),
+                   help='With initial-green, change the old lamp after observing the front across the line')
     p.add_argument('--distance-geometry', choices=('body','legacy'), default='body',
                    help='Measured body front, or old 4.38046m reference offset')
     p.add_argument('--stop-policy', choices=('approach','legacy'), default='approach',
@@ -118,6 +120,8 @@ def main():
     if a.signal_profile!='red-green' and (not a.map_signal or a.initial_green or a.release_after is None
             or not math.isfinite(a.change_after) or not 0<a.change_after<a.release_after):
         p.error('Dynamic profile requires --map-signal and 0 < change-after < release-after, without initial-green')
+    if a.after_passage and not a.initial_green:
+        p.error('After-passage requires --map-signal --initial-green')
     import carla
     a.output.mkdir(parents=True, exist_ok=True)
     if (a.output/'report.json').exists():
@@ -131,6 +135,7 @@ def main():
     world=None;original=None;spectator=None;original_view=None;actors=[];rows=[];collisions=[];cleanup=[]
     lamp=None;lamp_original=[];original_frozen=None;lamp_switched=False;task_cleared=False
     signal_changed=False;last_observed_lamp=None
+    front_crossed=False;passage_event=False
     report=dict(passed=False, sdk_verified=False, official_score_verified=False,
         source_build=controller.build, steering_build=steering.build,
         git_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).resolve().parents[1],text=True).strip(),
@@ -257,9 +262,13 @@ def main():
                     signal_changed=True
                 if release_allowed and not lamp_switched:
                     lamp.set_state(carla.TrafficLightState.Green);lamp_switched=True
+                if a.after_passage and front_crossed and not passage_event:
+                    if a.after_passage=='red': lamp.set_state(carla.TrafficLightState.Red)
+                    passage_event=True
                 code,ok,lamp_name=observe(lamp)
                 actual_lamp_name=lamp_name
                 injected_fault=a.signal_profile=='read-outage' and a.change_after<=elapsed<a.release_after
+                injected_fault=injected_fault or (a.after_passage=='read-outage' and passage_event)
                 if injected_fault: code,ok,lamp_name=0,False,'injected_read_failure'
                 release_allowed=ok and code==2 # permission comes from observation, NOT the timer
                 if lamp_name!=last_observed_lamp:
@@ -270,7 +279,8 @@ def main():
                 state=sequence.step(1,snapshot.timestamp.elapsed_seconds,reference,used_front,speed,
                                     a.speed_kmh/3.6,controller.margin,code,ok=ok)
                 target=state['target']
-                if release_allowed and reference-front<=-5 and reference-rear<=0:
+                front_crossed=reference-front<0
+                if (release_allowed or state.get('passed',False)) and reference-front<=-5 and reference-rear<=0:
                     sequence.clear();task_cleared=True
             elif a.signal_tasks:
                 state=sequence.step(task_index+1,snapshot.timestamp.elapsed_seconds,reference,used_front,speed,
@@ -294,6 +304,7 @@ def main():
                 task_id=task_index+1,signal_state=state.get('signal',-1),
                 lamp_state=lamp_name,rear_gap_m=reference-rear,task_cleared=task_cleared,
                 actual_lamp_state=actual_lamp_name,injected_read_failure=injected_fault,
+                signal_passed=state.get('passed',False),
                 stop_phase=state['phase'],controller_held_s=state['held'],controller_ready=state['ready'],
                 throttle=throttle,brake=brake,steering=steer,lateral_m=lateral))
             if release_allowed and not release_shown:
@@ -303,7 +314,7 @@ def main():
                     carla.Location(line[0]+axis[1]*2,line[1]-axis[0]*2,origin.z+.03),
                     thickness=.15,color=carla.Color(0,255,0),life_time=a.seconds)
                 release_shown=True
-            if release_allowed and reference-front<=-5 and (not a.map_signal or task_cleared):
+            if (release_allowed or task_cleared) and reference-front<=-5 and (not a.map_signal or task_cleared):
                 if task_index+1==len(lines): break # finish within the prevalidated corridor
                 task_index+=1;release_shown=False
                 next_line=lines[task_index]
@@ -317,7 +328,8 @@ def main():
             if not a.no_realtime:
                 time.sleep(max(0.0,a.fixed_delta_seconds-(time.monotonic()-frame_started)))
         report['playback_wall_seconds']=time.monotonic()-playback_started
-        report.update(assessment=assess_transitions(rows,collisions,a.signal_profile) if a.map_signal and a.signal_profile!='red-green' else
+        report.update(assessment=assess_passage(rows,collisions,a.after_passage) if a.after_passage else
+                      assess_transitions(rows,collisions,a.signal_profile) if a.map_signal and a.signal_profile!='red-green' else
                       assess_signal(rows,collisions,a.initial_green) if a.map_signal else
                       assess_signal_tasks(rows,collisions) if a.signal_tasks else
                       assess_release(rows,collisions) if sequence else assess(rows,collisions))

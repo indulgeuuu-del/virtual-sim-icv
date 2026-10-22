@@ -150,3 +150,27 @@ def assess_transitions(rows,collisions,profile):
         fault_stop_gap_m=fault[-1]['front_gap_m'],zero_request_during_fault=safe,
         stopped_during_fault=stopped,departure_delay_s=delay,cleared=cleared,
         reason='injected adapter read failure with real CARLA physics; <=5s recovery engineering target, not official fault scoring')
+
+
+def assess_passage(rows,collisions,event):
+    """Retiring an old light must not override other vehicle safety constraints.
+
+    This single empty-road experiment keeps the upstream speed ceiling positive;
+    tests of the C++ core separately require a zero upstream ceiling to win.
+    """
+    expected={'red':'Red','read-outage':'injected_read_failure'}.get(event)
+    if (expected is None or not rows or collisions
+        or any(not all(math.isfinite(r[k]) for k in
+            ('time','speed_mps','front_gap_m','rear_gap_m','target_mps')) for r in rows)
+        or any(not 0<b['time']-a['time']<=.25 for a,b in zip(rows,rows[1:]))):
+        return dict(passed=False,reason='invalid passage samples or collision')
+    entry=next((i for i,r in enumerate(rows) if r['front_gap_m']<0),None)
+    change=next((i for i,r in enumerate(rows) if r['lamp_state']!='Green'),None)
+    if entry is None or change is None or entry==0 or entry>=change:
+        return dict(passed=False,reason='no observed green entry before old-lamp change')
+    after=rows[change:]
+    continuous=all(r['lamp_state']==expected and r['target_mps']>0 and r['speed_mps']>.1 for r in after)
+    cleared=rows[-1]['task_cleared'] and rows[-1]['front_gap_m']<=-5 and rows[-1]['rear_gap_m']<=0
+    return dict(passed=continuous and cleared,continued_after_old_lamp_change=continuous,
+                cleared=cleared,min_speed_after_change_mps=min(r['speed_mps'] for r in after),
+                reason='green entry then old-lamp change on empty straight corridor; not full junction/official scoring')

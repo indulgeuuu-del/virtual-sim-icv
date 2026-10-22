@@ -145,5 +145,32 @@ class DynamicSignalTests(unittest.TestCase):
             with self.subTest(change=change):self.assertFalse(self.assess(rows)['passed'])
 
 
+class PassageAssessmentTests(unittest.TestCase):
+    @staticmethod
+    def rows():
+        return [dict(time=i*.1,speed_mps=2,front_gap_m=gap,rear_gap_m=gap+4,
+                     target_mps=8,lamp_state='Green' if i<2 else 'Red',task_cleared=i==3)
+                for i,gap in enumerate((.1,-.1,-.3,-5))]
+
+    def test_green_entry_then_red_or_fault(self):
+        from tools.carla_signal import assess_passage
+        rows=self.rows()
+        self.assertTrue(assess_passage(rows,[],'red')['passed'])
+        for r in rows[2:]:r['lamp_state']='injected_read_failure'
+        self.assertTrue(assess_passage(rows,[],'read-outage')['passed'])
+
+    def test_red_entry_missing_change_restop_or_failed_cleanup_rejected(self):
+        from tools.carla_signal import assess_passage
+        for i,change in ((1,dict(lamp_state='Red')),(2,dict(target_mps=0)),
+                         (2,dict(speed_mps=0)),(3,dict(task_cleared=False)),
+                         (3,dict(rear_gap_m=.1)),(3,dict(time=9))):
+            rows=self.rows();rows[i].update(change)
+            self.assertFalse(assess_passage(rows,[],'red')['passed'])
+        rows=self.rows()
+        self.assertFalse(assess_passage(rows[1:],[],'red')['passed'])
+        for r in rows:r['lamp_state']='Green'
+        self.assertFalse(assess_passage(rows,[],'red')['passed'])
+
+
 if __name__=='__main__':
     unittest.main()

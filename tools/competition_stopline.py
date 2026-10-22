@@ -152,6 +152,8 @@ class SignalStopTask:
         self.dll.signal_destroy.restype=None
         self.dll.signal_clear.argtypes=[ctypes.c_void_p]
         self.dll.signal_clear.restype=None
+        self.dll.signal_passed.argtypes=[ctypes.c_void_p]
+        self.dll.signal_passed.restype=ctypes.c_int
         self.dll.signal_step.argtypes=[ctypes.c_void_p,ctypes.c_int]+[ctypes.c_double]*6+[ctypes.c_int]*3+[ctypes.POINTER(_SequenceOutput),ctypes.POINTER(ctypes.c_int)]
         self.dll.signal_step.restype=ctypes.c_int
         self.handle=self.dll.signal_create(dwell_seconds)
@@ -165,7 +167,8 @@ class SignalStopTask:
         if not self.dll.signal_step(self.handle,token,time,distance,front,speed,ceiling,margin,
             status,bool(ok),bool(relevant),ctypes.byref(out),ctypes.byref(signal)):
             raise RuntimeError('Signal task call failed')
-        return dict(target=out.target,held=out.held,phase=out.phase,ready=bool(out.ready),signal=signal.value)
+        return dict(target=out.target,held=out.held,phase=out.phase,ready=bool(out.ready),signal=signal.value,
+                    passed=bool(self.dll.signal_passed(self.handle)))
 
     def clear(self):
         if not self.handle: raise RuntimeError('Closed signal task')

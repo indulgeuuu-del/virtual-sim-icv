@@ -63,6 +63,9 @@ extern "C" __declspec(dllexport) void signal_destroy(void* handle) {
 extern "C" __declspec(dllexport) void signal_clear(void* handle) {
     if(handle) static_cast<StopLineControl::SignalTask*>(handle)->clear();
 }
+extern "C" __declspec(dllexport) int signal_passed(void* handle) {
+    return handle && static_cast<StopLineControl::SignalTask*>(handle)->passed() ? 1 : 0;
+}
 extern "C" __declspec(dllexport) int signal_step(void* handle,int token,double time,double distance,
     double front,double speed,double ceiling,double margin,int status,int ok,int relevant,
     SequenceOutput* output,int* signalOut) {

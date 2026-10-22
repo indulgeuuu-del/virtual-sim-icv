@@ -223,6 +223,75 @@ class SignalTaskTests(unittest.TestCase):
         self.assertFalse(assess_signal_tasks(bad,[])['passed'])
         self.assertFalse(assess_signal_tasks(rows[32:]+rows[:32],[])['passed'])
 
+    def cross_on_green(self,c):
+        self.step(c,0,status=2,distance=2.63,speed=2)
+        return self.step(c,.2,status=2,distance=2.23,speed=2)
+
+    def test_passed_green_signal_does_not_restop_for_old_lamp(self):
+        for fault in (dict(status=1),dict(status=3),dict(status=0),dict(status=-1),dict(status=2,ok=False)):
+            c=self.make();self.cross_on_green(c)
+            with self.subTest(fault=fault):
+                self.assertEqual(self.step(c,.3,distance=2.03,speed=2,**fault)['target'],8)
+                self.assertEqual(self.step(c,.4,distance=1.83,speed=2,ceiling=0,**fault)['target'],0)
+
+    def test_negative_distance_alone_does_not_prove_green_passage(self):
+        for first in (1,2,0,-1):
+            c=self.make()
+            self.step(c,0,status=first,distance=2.23,speed=2)
+            self.assertEqual(self.step(c,.1,status=1,distance=2.03,speed=2)['target'],0)
+
+    def test_crossing_without_continuous_green_cannot_release(self):
+        for fault in (dict(status=1),dict(status=0),dict(status=2,ok=False)):
+            c=self.make();self.step(c,0,status=2,distance=2.63,speed=2)
+            self.assertEqual(self.step(c,.2,distance=2.23,speed=2,**fault)['target'],0)
+            self.assertEqual(self.step(c,.3,status=1,distance=2.03,speed=2)['target'],0)
+
+    def test_passage_does_not_survive_token_clear_or_return_before_line(self):
+        for kw in (dict(token=11,distance=2.03),dict(distance=2.63)):
+            c=self.make();self.cross_on_green(c)
+            self.assertEqual(self.step(c,.3,status=1,speed=2,**kw)['target'],0)
+        c=self.make();self.cross_on_green(c);c.clear()
+        self.assertEqual(self.step(c,.3,status=1,distance=2.03,speed=2)['target'],0)
+
+    def test_teleport_or_time_gap_cannot_create_passage(self):
+        for t,d in ((.3,2.23),(.2,-100),(-.1,2.23)):
+            c=self.make();self.step(c,0,status=2,distance=2.63,speed=2)
+            self.step(c,t,status=2,distance=d,speed=2)
+            self.assertEqual(self.step(c,t+.1,status=1,distance=d-.2,speed=2)['target'],0)
+
+    def test_localization_failure_still_stops_after_passage(self):
+        c=self.make();self.cross_on_green(c)
+        self.assertEqual(self.step(c,.3,status=2,distance=math.nan,speed=2)['target'],0)
+
+    def test_unknown_first_observation_cannot_turn_absence_into_permission(self):
+        c=self.make();self.step(c,0,status=0)
+        self.assertEqual(self.step(c,.1,status=-1)['target'],0)
+
+    def test_standstill_geometry_noise_is_not_passage(self):
+        c=self.make();self.step(c,0,status=2,distance=2.48,speed=0)
+        self.assertFalse(self.step(c,.1,status=2,distance=2.39,speed=0)['passed'])
+        self.assertEqual(self.step(c,.2,status=1,distance=2.39,speed=0)['target'],0)
+
+    def test_mandatory_stop_must_finish_before_passage(self):
+        c=self.make(5);self.cross_on_green(c)
+        self.assertEqual(self.step(c,.3,status=1,distance=2.03,speed=2)['target'],0)
+        c=self.make(5)
+        for i in range(23): self.step(c,i*.25)
+        self.assertEqual(self.step(c,5.75,status=2)['target'],8)
+        self.assertTrue(self.step(c,6,status=2,distance=2.23,speed=2)['passed'])
+        self.assertEqual(self.step(c,6.1,status=1,distance=2.03,speed=2)['target'],8)
+
+    def test_time_or_geometry_discontinuity_revokes_passage(self):
+        for t,d in ((.6,2.03),(.3,-100),(.1,2.03)):
+            c=self.make();self.cross_on_green(c)
+            r=self.step(c,t,status=2,distance=d,speed=2)
+            self.assertEqual(r['target'],0);self.assertFalse(r['passed'])
+
+    def test_line_equality_is_not_already_passed(self):
+        c=self.make();self.step(c,0,status=2,distance=2.63,speed=2)
+        self.assertFalse(self.step(c,.1,status=2,distance=2.43,speed=2)['passed'])
+        self.assertTrue(self.step(c,.2,status=2,distance=2.23,speed=2)['passed'])
+
 
 if __name__=='__main__':
     unittest.main()

@@ -92,41 +92,82 @@ enum class Signal { Unknown = 0, Stop = 1, Go = 2, Absent = 3 };
 class SignalTask {
 public:
     explicit SignalTask(double dwell) : dwell_(dwell), sequence_(dwell) {}
-    void clear() { active_ = false; sequence_.reset(dwell_); }
+    void clear() {
+        active_ = false; token_ = -1; passed_ = previous_ = allowed_ = false;
+        sequence_.reset(dwell_);
+    }
+    bool passed() const { return passed_; }
     competition::StopOutput update(int token, Signal signal, double time,
         double distance,double front,double speed,double ceiling,double margin) {
         if (!std::isfinite(dwell_) || dwell_ < 0 || !std::isfinite(time) || time < 0
-            || !valid(distance,0,front,speed,ceiling,margin)) {
+            || token < 0 || !valid(distance,0,front,speed,ceiling,margin)) {
+            passed_ = previous_ = allowed_ = false;
             sequence_.update(time,distance,front,speed,ceiling,margin,false,false);
             return {};
+        }
+        if (token != token_) { clear(); token_ = token; }
+        const double gap = distance - front;
+        const double dt = time - time_;
+        // Same continuity bound as stop sampling; 0.1m is engineering geometry
+        // slack, not a rule threshold or a claim of official map accuracy.
+        const double travel = std::max(speed,speed_) * dt + 0.1;
+        if (!std::isfinite(gap) || (previous_ && (!(dt > 0 && dt <= 0.25)
+                || (passed_ && std::abs(gap-gap_) > travel)))) {
+            passed_ = previous_ = allowed_ = false;
+            sequence_.reset(dwell_); active_ = true;
+            return {};
+        }
+        if (passed_ && gap >= 0) {
+            // A reversal/route reassignment creates a new obligation.
+            passed_ = previous_ = allowed_ = false;
+            sequence_.reset(dwell_);
+        }
+        if (previous_ && allowed_ && signal == Signal::Go && gap_ >= 0 && gap < 0
+                && std::max(speed,speed_) > 0.1 && gap_-gap <= travel) passed_ = true;
+        if (passed_) {
+            // This light no longer constrains speed. Upstream obstacle/speed
+            // ceilings still apply, and invalid localization is handled above.
+            remember(time,gap,speed,false);
+            return {ceiling,0,competition::StopPhase::Ready,true};
         }
         // An empty/unrelated lamp list does not release an existing obligation.
         if (signal == Signal::Unknown || signal == Signal::Absent) {
+            previous_ = allowed_ = false;
             sequence_.update(time,distance,front,speed,ceiling,margin,false,false);
             if (!active_ && signal == Signal::Absent)
                 return {ceiling,0,competition::StopPhase::Approaching,false};
+            active_ = true; // an unknown first read must not become empty-list permission
             return {};
         }
-        if (token < 0 || (signal != Signal::Go && signal != Signal::Stop)) {
+        if (signal != Signal::Go && signal != Signal::Stop) {
+            previous_ = allowed_ = false; active_ = true;
             sequence_.update(time,distance,front,speed,ceiling,margin,false,false);
             return {};
         }
-        if (!active_ || token != token_) {
-            token_ = token; active_ = true; sequence_.reset(dwell_);
+        if (!active_) {
+            active_ = true; sequence_.reset(dwell_);
         }
         // A plain light response does not impose a mandatory stop on green.
         if (dwell_ == 0) {
             const double target = signal == Signal::Go ? ceiling
                 : approachTarget(distance,0,front,speed,ceiling,margin);
+            remember(time,gap,speed,signal == Signal::Go && target > 0);
             return {target,0,signal == Signal::Go ? competition::StopPhase::Ready
                 : competition::StopPhase::Approaching,signal == Signal::Go};
         }
-        return sequence_.update(time,distance,front,speed,ceiling,margin,signal == Signal::Go);
+        const auto result = sequence_.update(time,distance,front,speed,ceiling,margin,signal == Signal::Go);
+        remember(time,gap,speed,signal == Signal::Go && result.ready && result.targetSpeed > 0);
+        return result;
     }
 private:
+    void remember(double time,double gap,double speed,bool allowed) {
+        time_ = time; gap_ = gap; speed_ = speed; previous_ = true; allowed_ = allowed;
+    }
     double dwell_;
     int token_ = -1;
     bool active_ = false;
+    bool passed_ = false, previous_ = false, allowed_ = false;
+    double time_ = 0, gap_ = 0, speed_ = 0;
     Sequence sequence_;
 };
 } // namespace StopLineControl
