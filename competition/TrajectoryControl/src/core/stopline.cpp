@@ -4,6 +4,7 @@
 #include "manual.h"
 #include "stopline.h"
 #include <stdexcept>
+#include <limits>
 
 // 查询接口返回类型尚待本届SDK核验；先验证实际取得的首条停止线几何。
 static bool readStopLineEndpoints(const SSD::SimVector<HDMapStandalone::MObject>& lines,
@@ -322,123 +323,86 @@ bool StopLine::checkVechicleInSameLane(const Obstacle& obstacle) const
 // 对于静止的停止线的变道操作（使用 Liy 变道法）
 bool getLaneChangePath(StopLine& stopLine)
 {
-    LOG << "是的bro调用了liy变道发";
-    static SSD::SimString targetLaneID = mainVehicle.laneID;
-
+    // Callers historically ignore the boolean. Failure must explicitly request
+    // Speed zero before the main loop snapshots its pre-arbitration ceiling.
+    auto fail = [](const char* reason) {
+        LOG << "Lane change unavailable: " << reason << "; stop and retry";
+        pControl->throttleMode = ESimOne_Throttle_Mode::ESimOne_Throttle_Mode_Speed;
+        pControl->throttle = 0;
+        pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_None;
+        return false;
+    };
+    auto finitePoint = [](const SSD::SimPoint3D& point) {
+        return std::isfinite(point.x) && std::isfinite(point.y) && std::isfinite(point.z);
+    };
+    auto validPath = [&](const SSD::SimPoint3DVector& path) {
+        if (path.size() < 2) return false;
+        bool distinct = false;
+        for (size_t i = 0; i < path.size(); ++i) {
+            if (!finitePoint(path[i])) return false;
+            if (i && (path[i].x != path[0].x || path[i].y != path[0].y)) distinct = true;
+        }
+        return distinct;
+    };
     if (!stopLine.isVechicleInSameLane) return false;
+    if (!std::isfinite(stopLine.toVehicleDist) || !std::isfinite(laneChangeDistThres)
+        || laneChangeDistThres <= 0 || !std::isfinite(completeLaneChangeTThres)
+        || completeLaneChangeTThres <= 0) return fail("invalid distance or threshold");
+    if (stopLine.toVehicleDist >= laneChangeDistThres) return false;
+    if (!finitePoint(mainVehicle.pt) || !std::isfinite(pGps->angVelZ))
+        return fail("invalid vehicle pose");
 
-    if (stopLine.toVehicleDist < laneChangeDistThres) // 距离小于阈值，开始变道
-    {
-        HDMapStandalone::MLaneInfo laneInfoInit;
-        HDMapStandalone::MLaneLink pLink;
-        SimOneAPI::GetLaneLink(mainVehicle.laneID, pLink);
+    HDMapStandalone::MLaneLink link;
+    if (!SimOneAPI::GetLaneLink(mainVehicle.laneID, link)) return fail("lane link query failed");
+    SSD::SimString lane;
+    auto signal = ESimOne_Signal_Light::ESimOne_Signal_Light_None;
+    if (mainVehicle.leftLaneExist && mainVehicle.neighborhood.left.empty()) {
+        lane = link.leftNeighborLaneName;
+        signal = ESimOne_Signal_Light::ESimOne_Signal_Light_LeftBlinker;
+    } else if (mainVehicle.rightLaneExist && mainVehicle.neighborhood.right.empty()) {
+        lane = link.rightNeighborLaneName;
+        signal = ESimOne_Signal_Light::ESimOne_Signal_Light_RightBlinker;
+    } else return fail("no available adjacent lane");
+    if (lane == SSD::SimString("")) return fail("empty adjacent lane identity");
+    HDMapStandalone::MLaneInfo info;
+    if (!SimOneAPI::GetLaneSample(lane, info)) return fail("lane sample query failed");
+    if (!(info.laneName == lane) || !validPath(info.centerLine))
+        return fail("invalid adjacent lane geometry or identity");
+    double s = std::numeric_limits<double>::quiet_NaN();
+    double t = std::numeric_limits<double>::quiet_NaN();
+    if (!SimOneAPI::GetLaneST(lane, mainVehicle.pt, s, t) || !std::isfinite(s) || !std::isfinite(t))
+        return fail("lane projection failed");
 
-        if (mainVehicle.leftLaneExist&& mainVehicle.neighborhood.left.empty() && SimOneAPI::GetLaneSample(pLink.leftNeighborLaneName, laneInfoInit))
-        {
-            targetPath = laneInfoInit.centerLine;
-            pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_LeftBlinker;
-        }
-        else if (mainVehicle.rightLaneExist && mainVehicle.neighborhood.right.empty() &&SimOneAPI::GetLaneSample(pLink.rightNeighborLaneName, laneInfoInit))
-        {
-            targetPath = laneInfoInit.centerLine;
-            pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_RightBlinker;
-        }
-        else {
-            globalLogger(Logger::Color::BrightGreen) << "不存在邻接车道或获取邻接车道信息失败......";
-            pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_None;
-            return false;
-        }
-
-        mainVehicle.steeringOffset = -pGps->angVelZ;
-        targetLaneID = laneInfoInit.laneName;
-
-        double s, t;
-        SimOneAPI::GetLaneST(targetLaneID, mainVehicle.pt, s, t);
-        if (std::abs(t) < completeLaneChangeTThres) // 已经到达目标车道，规划到终点的轨迹
-        {
-            SSD::SimPoint3D destinationPos(initialPath.back());
-            initialPath.clear(); // 更新起点和终点
-            initialPath.push_back(mainVehicle.pt);
-            initialPath.push_back(destinationPos);
-
-            targetPath.clear();
-            SSD::SimVector<int> validWayPoints;
-            if (!SimOneAPI::GenerateRoute(initialPath, validWayPoints, targetPath)) {
-                globalLogger(Logger::Color::BrightMagenta) << "使用 A* 生成主车路径规划失败";
-                return false;
-            }
-
-            steerKpUse += 0.5;
-            pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_None;
-        }
-
-        return true;
+    SSD::SimPoint3DVector candidatePath = info.centerLine;
+    SSD::SimPoint3DVector candidateInput;
+    const bool complete = std::abs(t) < completeLaneChangeTThres;
+    if (complete) {
+        if (initialPath.empty() || !finitePoint(initialPath.back())) return fail("missing destination");
+        candidateInput.push_back(mainVehicle.pt);
+        candidateInput.push_back(initialPath.back());
+        candidatePath.clear();
+        SSD::SimVector<int> candidateValid;
+        if (!SimOneAPI::GenerateRoute(candidateInput, candidateValid, candidatePath)
+            || !validPath(candidatePath)) return fail("route generation failed or invalid route");
     }
-
-    targetLaneID = mainVehicle.laneID;
-    return false;
+    // Commit only after all SDK outputs are usable. Partial failed writes stay
+    // local so the active route and steering state survive for a later retry.
+    targetPath = candidatePath;
+    mainVehicle.steeringOffset = -pGps->angVelZ;
+    if (complete) {
+        initialPath = candidateInput;
+        steerKpUse += 0.5;
+        signal = ESimOne_Signal_Light::ESimOne_Signal_Light_None;
+    }
+    pLight->signalLights = signal;
+    return true;
 }
 
-// 对于运动的停止线的变道操作
+// Both entry points use the same occupancy and SDK-failure protections.
 bool getLaneChangePath(StopLine& stopLine, float velocityPlanar)
 {
-    static SSD::SimString targetLaneID = mainVehicle.laneID;
-
-    if (!stopLine.isVechicleInSameLane) return false;
-
-    /* 速度规划 */
-    // 似乎暂且还不需要进行速度规划？
-
-    if (stopLine.toVehicleDist < laneChangeDistThres) // 距离小于阈值，开始变道
-    {
-        HDMapStandalone::MLaneInfo laneInfoInit;
-        HDMapStandalone::MLaneLink pLink;
-        SimOneAPI::GetLaneLink(mainVehicle.laneID, pLink);
-
-        if (mainVehicle.leftLaneExist && SimOneAPI::GetLaneSample(pLink.leftNeighborLaneName, laneInfoInit))
-        {
-            targetPath = laneInfoInit.centerLine;
-            pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_LeftBlinker;
-        }
-        else if (mainVehicle.rightLaneExist && SimOneAPI::GetLaneSample(pLink.rightNeighborLaneName, laneInfoInit))
-        {
-            targetPath = laneInfoInit.centerLine;
-            pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_RightBlinker;
-        }
-        else {
-            globalLogger(Logger::Color::BrightGreen) << "不存在邻接车道或获取邻接车道信息失败......";
-            pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_None;
-            return false;
-        }
-
-        mainVehicle.steeringOffset = -pGps->angVelZ;
-        targetLaneID = laneInfoInit.laneName;
-
-        double s, t;
-        SimOneAPI::GetLaneST(targetLaneID, mainVehicle.pt, s, t);
-        if (std::abs(t) < completeLaneChangeTThres) // 已经到达目标车道，规划到终点的轨迹
-        {
-            SSD::SimPoint3D destinationPos(initialPath.back());
-            initialPath.clear(); // 更新起点和终点
-            initialPath.push_back(mainVehicle.pt);
-            initialPath.push_back(destinationPos);
-
-            targetPath.clear();
-            SSD::SimVector<int> validWayPoints;
-            if (!SimOneAPI::GenerateRoute(initialPath, validWayPoints, targetPath)) {
-                globalLogger(Logger::Color::BrightMagenta) << "使用 A* 生成主车路径规划失败";
-                return false;
-            }
-
-            steerKpUse += 0.5;
-            pLight->signalLights = ESimOne_Signal_Light::ESimOne_Signal_Light_None;
-        }
-
-        return true;
-    }
-
-    targetLaneID = mainVehicle.laneID;
-    return false;
+    (void)velocityPlanar; // inherited entry has no separate speed planning
+    return getLaneChangePath(stopLine);
 }
 
 //// 对于运动的停止线的变道操作

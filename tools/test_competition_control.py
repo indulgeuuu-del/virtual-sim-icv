@@ -95,7 +95,7 @@ def main():
     )
     report = {'sdk_build_verified': False, 'platform_run_verified': False,
               'official_score_verified': False,
-              'scope': 'geometry; full vehicle update and following loop; track input prefix; strategy loop; obstacle fetch; real drive/pursuit/PID/curvature',
+              'scope': 'geometry; full vehicle update and following loop; track input prefix; strategy loop; lane-change/SDK failure through arbitration and drive; obstacle fetch; real drive/pursuit/PID/curvature',
               'limitations': 'map/API/frame-input fixtures; following/track input suites substitute drive and convert legacy fatal ASSERT to test failure; no full track planner, SDK, vehicle dynamics or scoring',
               'tests': {}, 'passed': False}
     try:
@@ -133,6 +133,7 @@ def main():
             root / 'tests/cpp/lane_distance_test.cpp',
             root / 'tests/cpp/lateral_gap_test.cpp',
             root / 'tests/cpp/traffic_light_test.cpp',
+            root / 'tests/cpp/lane_change_test.cpp',
             root / 'tests/cpp/obstacle_boundary_test.cpp',
             root / 'tests/cpp/road_width_test.cpp',
             root / 'tests/cpp/obstacle_constructor_test.cpp',
@@ -188,6 +189,10 @@ def main():
         preamble = boundary_harness.replace('// @BOUNDARY@', boundary).split('int main(', 1)[0]
         (output / 'constructor.cpp').write_bytes((preamble + constructor_fixture).encode('utf-8'))
         stopline = sources['TrajectoryControl/src/core/stopline.cpp']
+        lane_fixture = read_source(root / 'tests/cpp/lane_change_test.cpp')
+        lane_fixture = lane_fixture.replace('// @LANE_CHANGE@', between(stopline,
+            'bool getLaneChangePath(StopLine& stopLine)', '//// 对于运动的停止线的变道操作'))
+        (output / 'lane_change.cpp').write_bytes(lane_fixture.encode('utf-8'))
         stop_fixture = read_source(root / 'tests/cpp/stopline_projection_test.cpp')
         stop_fixture = stop_fixture.replace('// @CLASS@', between(sources['TrajectoryControl/src/core/stopline.h'],
             'class StopLine {', '// 计算到主车最近的停止线'))
@@ -313,6 +318,10 @@ def main():
                 raise ValueError('missing speed arbitration insertion point')
             speed_support = speed_support.replace(marker, code)
         (drive_dir / 'track_speed.cpp').write_bytes(speed_support.encode('utf-8'))
+        lane_fixture = lane_fixture.replace('// @CONTROLLER@', support)
+        lane_fixture = lane_fixture.replace('// @DRIVE@', drive.replace('MainVehicle::drive', 'Vehicle::drive', 1))
+        lane_fixture = lane_fixture.replace('// @ARBITRATION@', speed_support.replace('#include "main.h"',''))
+        (output / 'lane_change.cpp').write_bytes(lane_fixture.encode('utf-8'))
         stop_drive = stop_fixture.split('int main(', 1)[0]
         stop_drive = stop_drive.replace(
             'double StopLine::calculateVehicleDistance(const SSD::SimPoint3D&) const { return 20; }',
@@ -406,6 +415,16 @@ def main():
                     'passed': result.returncode == 0, 'output': (result.stdout + result.stderr).strip()}
 
         compile_run(output, ['geometry.cpp'], [str(i) for i in range(13)], 'geometry')
+        compile_run(output, ['lane_change.cpp'], [f'{mode}_{case}'
+            for mode in ('static','moving') for case in (
+                'left','right','complete','equal','far','unrelated','none','blocked',
+                'link_unwritten','link_written','empty_link','sample_unwritten','sample_written',
+                'sample_empty','sample_short','sample_nan','sample_inf','sample_degenerate','sample_wrong_lane',
+                'projection_unwritten','projection_written','projection_nan','projection_inf',
+                'route_written','route_empty','route_short','route_nan',
+                'distance_nan','yaw_nan','position_nan','percent',
+                'destination_empty','destination_nan',
+                'output_forward','output_reverse','output_slide','output_both')], 'lane_change')
         compile_run(output, ['stopline_drive.cpp'], ['near','far','ignored']
                     + ['sequence_forward','sequence_reverse','sequence_slide','sequence_both']
                     + [f'{kind}_{mode}' for kind in ('light','crosswalk','projection')
